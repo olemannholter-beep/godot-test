@@ -1,0 +1,288 @@
+[gd_scene format=3 uid="uid://0nnwtrnymk0w"]
+
+[ext_resource type="Shader" uid="uid://c10h2suytbc51" path="res://shaders/ocean_water.gdshader" id="1_ocean_shader"]
+[ext_resource type="PackedScene" uid="uid://c8blcagvdtyyk" path="res://scenes/boat.tscn" id="2_boat_scene"]
+[ext_resource type="Script" uid="uid://c7vlwek3ngrnv" path="res://scripts/overhead_camera.gd" id="3_camera_script"]
+[ext_resource type="Script" uid="uid://bx8e2mai0vpnf" path="res://scripts/storm_director.gd" id="4_storm_script"]
+[ext_resource type="AudioStream" uid="uid://bjr7n0gq5gyck" path="res://assets/audio/rain_ocean_loop.ogg" id="5_rain_wav"]
+[ext_resource type="AudioStream" uid="uid://ko2gqftmvfjs" path="res://assets/audio/thunder_strike.ogg" id="6_thunder_wav"]
+[ext_resource type="Script" uid="uid://cfqlu4fffhxxe" path="res://scripts/world_builder.gd" id="7_world_builder_script"]
+[ext_resource type="PackedScene" path="res://scenes/sonar_hud.tscn" id="8_sonar_hud_scene"]
+[ext_resource type="Script" uid="uid://c8ke2vwjsnkrm" path="res://scripts/harbor_ui.gd" id="9_harbor_ui_script"]
+[ext_resource type="Shader" uid="uid://b0veiyxwfkbi1" path="res://shaders/rolling_sea_fog.gdshader" id="10_sea_fog_shader"]
+[ext_resource type="Shader" uid="uid://ccimhpbt3v6mm" path="res://shaders/lovecraft_post_process.gdshader" id="11_post_process_shader"]
+[ext_resource type="Script" path="res://scripts/lighting_debug_tuner.gd" id="12_lighting_tuner_script"]
+[ext_resource type="Script" path="res://scripts/roaming_threat_director.gd" id="13_threat_director_script"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
+sky_top_color = Color(0.004, 0.008, 0.014, 1)
+sky_horizon_color = Color(0.015, 0.028, 0.04, 1)
+sky_curve = 0.06
+sky_energy_multiplier = 0.35
+ground_bottom_color = Color(0.002, 0.005, 0.008, 1)
+ground_horizon_color = Color(0.01, 0.02, 0.03, 1)
+sun_angle_max = 3.5
+sun_curve = 0.04
+energy_multiplier = 3.8
+
+[sub_resource type="Sky" id="Sky_main"]
+sky_material = SubResource("ProceduralSkyMaterial_sky")
+
+[sub_resource type="Environment" id="Environment_overworld"]
+background_mode = 2
+sky = SubResource("Sky_main")
+ambient_light_source = 2
+ambient_light_color = Color(0.08, 0.14, 0.2, 1)
+ambient_light_sky_contribution = 0.0
+ambient_light_energy = 0.55
+tonemap_mode = 3
+tonemap_exposure = 1.05
+tonemap_white = 6.0
+ssr_enabled = true
+ssao_enabled = true
+ssao_radius = 1.2
+ssao_intensity = 2.8
+ssao_power = 1.8
+ssil_enabled = true
+ssil_radius = 3.5
+ssil_intensity = 1.2
+glow_enabled = true
+glow_intensity = 0.65
+glow_strength = 0.95
+glow_bloom = 0.08
+glow_hdr_threshold = 1.15
+fog_enabled = true
+fog_light_color = Color(0.008, 0.015, 0.024, 1)
+fog_density = 0.0045
+fog_aerial_perspective = 0.85
+fog_sky_affect = 0.0
+fog_height = 2.0
+fog_height_density = 0.08
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.0085
+volumetric_fog_albedo = Color(0.08, 0.11, 0.14, 1)
+volumetric_fog_emission = Color(0.002, 0.004, 0.006, 1)
+volumetric_fog_emission_energy = 0.04
+volumetric_fog_gi_inject = 0.4
+volumetric_fog_anisotropy = 0.42
+volumetric_fog_length = 220.0
+volumetric_fog_detail_spread = 1.4
+volumetric_fog_ambient_inject = 0.15
+volumetric_fog_temporal_reprojection_amount = 0.88
+volumetric_fog_sky_affect = 0.15
+adjustment_enabled = true
+adjustment_brightness = 1.04
+adjustment_contrast = 1.06
+adjustment_saturation = 0.9
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_foam"]
+noise_type = 2
+seed = 303
+frequency = 0.035
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_foam"]
+noise = SubResource("FastNoiseLite_foam")
+seamless = true
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_normal_a"]
+seed = 101
+frequency = 0.025
+fractal_octaves = 4
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_normal_a"]
+noise = SubResource("FastNoiseLite_normal_a")
+seamless = true
+as_normal_map = true
+bump_strength = 7.5
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_normal_b"]
+seed = 202
+frequency = 0.032
+fractal_octaves = 4
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_normal_b"]
+noise = SubResource("FastNoiseLite_normal_b")
+seamless = true
+as_normal_map = true
+bump_strength = 7.5
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_ocean"]
+render_priority = 0
+shader = ExtResource("1_ocean_shader")
+shader_parameter/deep_color = Color(0.04, 0.11, 0.15, 1)
+shader_parameter/shallow_color = Color(0.12, 0.26, 0.24, 1)
+shader_parameter/foam_color = Color(0.78, 0.84, 0.86, 1)
+shader_parameter/fog_tint_color = Color(0.16, 0.23, 0.27, 1)
+shader_parameter/deep_abyss_color = Color(0.008, 0.022, 0.035, 1)
+shader_parameter/coastal_slate_color = Color(0.024, 0.068, 0.088, 1)
+shader_parameter/kelp_patch_color = Color(0.018, 0.062, 0.052, 1)
+shader_parameter/sss_scatter_color = Color(0.05, 0.24, 0.26, 1)
+shader_parameter/wave_speed = 1.25
+shader_parameter/wave_height = 0.75
+shader_parameter/wave_time = 0.0
+shader_parameter/normal_scale = 0.045
+shader_parameter/normal_strength = 0.95
+shader_parameter/foam_scale = 0.08
+shader_parameter/roughness = 0.22
+shader_parameter/metallic = 0.18
+shader_parameter/specular = 0.92
+shader_parameter/normal_map_a = SubResource("NoiseTexture2D_normal_a")
+shader_parameter/normal_map_b = SubResource("NoiseTexture2D_normal_b")
+shader_parameter/foam_noise = SubResource("NoiseTexture2D_foam")
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_ocean"]
+material = SubResource("ShaderMaterial_ocean")
+size = Vector2(720, 720)
+subdivide_width = 600
+subdivide_depth = 600
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_ocean_horizon"]
+material = SubResource("ShaderMaterial_ocean")
+size = Vector2(6000, 6000)
+subdivide_width = 128
+subdivide_depth = 128
+
+[sub_resource type="WorldBoundaryShape3D" id="WorldBoundaryShape3D_ocean"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_sea_fog"]
+shader = ExtResource("10_sea_fog_shader")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_rain"]
+emission_shape = 3
+emission_box_extents = Vector3(38, 1, 38)
+direction = Vector3(0.22, -1, 0.15)
+spread = 2.0
+initial_velocity_min = 26.0
+initial_velocity_max = 32.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rain"]
+transparency = 1
+cull_mode = 2
+depth_draw_mode = 2
+albedo_color = Color(0.45, 0.52, 0.58, 0.22)
+metallic_specular = 0.8
+roughness = 0.1
+
+[sub_resource type="BoxMesh" id="BoxMesh_rain_streak"]
+material = SubResource("StandardMaterial3D_rain")
+size = Vector3(0.018, 0.85, 0.018)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_post_process"]
+render_priority = -10
+shader = ExtResource("11_post_process_shader")
+shader_parameter/ink_edge_color = Color(0.0196, 0.0275, 0.0353, 1)
+shader_parameter/ink_edge_strength = 0.5
+shader_parameter/shadow_split_color = Color(0.0235, 0.0431, 0.0627, 1)
+shader_parameter/highlight_amber_color = Color(0.8314, 0.6078, 0.2941, 1)
+shader_parameter/highlight_crimson_color = Color(0.6196, 0.1412, 0.1412, 1)
+shader_parameter/vignette_inner_radius = 0.62
+shader_parameter/vignette_outer_radius = 1.05
+shader_parameter/vignette_opacity = 0.72
+shader_parameter/film_grain_intensity = 0.016
+
+[sub_resource type="QuadMesh" id="QuadMesh_post_process"]
+material = SubResource("ShaderMaterial_post_process")
+flip_faces = true
+size = Vector2(2, 2)
+
+[node name="Overworld" type="Node3D" unique_id=1193177440]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1508718772]
+environment = SubResource("Environment_overworld")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1457599457]
+transform = Transform3D(0.819152, -0.269173, -0.506366, 0, 0.882948, -0.469472, 0.573576, 0.384569, 0.723269, 0, 25, 0)
+light_color = Color(0.55, 0.72, 0.88, 1)
+light_energy = 0.42
+light_volumetric_fog_energy = 0.35
+light_specular = 1.35
+shadow_enabled = true
+shadow_blur = 1.5
+
+[node name="Ocean" type="MeshInstance3D" parent="." unique_id=44875295]
+mesh = SubResource("PlaneMesh_ocean")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="Ocean" unique_id=1767720599]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ocean/StaticBody3D" unique_id=408928398]
+shape = SubResource("WorldBoundaryShape3D_ocean")
+
+[node name="OceanHorizon" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.25, 0)
+cast_shadow = 0
+mesh = SubResource("PlaneMesh_ocean_horizon")
+
+[node name="RollingSeaMistVolume" type="FogVolume" parent="." unique_id=318355247]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6, 0)
+size = Vector3(600, 18, 600)
+material = SubResource("ShaderMaterial_sea_fog")
+
+[node name="RainSystem" type="GPUParticles3D" parent="." unique_id=1212899410]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 22, 0)
+cast_shadow = 0
+amount = 3500
+lifetime = 1.1
+visibility_aabb = AABB(-60, -30, -60, 120, 40, 120)
+transform_align = 3
+process_material = SubResource("ParticleProcessMaterial_rain")
+draw_pass_1 = SubResource("BoxMesh_rain_streak")
+
+[node name="Boat" parent="." unique_id=60776553 instance=ExtResource("2_boat_scene")]
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1465397512 node_paths=PackedStringArray("target")]
+transform = Transform3D(1, 0, 0, 0, 0.573576, 0.819152, 0, -0.819152, 0.573576, 0, 35, 22)
+current = true
+fov = 50.0
+far = 3500.0
+script = ExtResource("3_camera_script")
+target = NodePath("../Boat")
+
+[node name="LovecraftPostProcessQuad" type="MeshInstance3D" parent="Camera3D" unique_id=421223370]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.5)
+cast_shadow = 0
+extra_cull_margin = 16384.0
+mesh = SubResource("QuadMesh_post_process")
+
+[node name="WorldBuilder" type="Node3D" parent="." unique_id=321100999]
+script = ExtResource("7_world_builder_script")
+
+[node name="StormDirector" type="Node3D" parent="." unique_id=2078457742 node_paths=PackedStringArray("boat", "ocean", "sea_fog_banks", "rain_system", "moonlight", "world_environment", "rain_audio", "thunder_audio")]
+script = ExtResource("4_storm_script")
+boat = NodePath("../Boat")
+ocean = NodePath("../Ocean")
+sea_fog_banks = NodePath("../RollingSeaMistVolume")
+rain_system = NodePath("../RainSystem")
+moonlight = NodePath("../DirectionalLight3D")
+world_environment = NodePath("../WorldEnvironment")
+rain_audio = NodePath("RainAudio")
+thunder_audio = NodePath("ThunderAudio")
+
+[node name="RainAudio" type="AudioStreamPlayer" parent="StormDirector" unique_id=1647255531]
+stream = ExtResource("5_rain_wav")
+volume_db = -8.0
+
+[node name="ThunderAudio" type="AudioStreamPlayer" parent="StormDirector" unique_id=1606749453]
+stream = ExtResource("6_thunder_wav")
+volume_db = -2.0
+
+[node name="SonarHUD" parent="." unique_id=414359934 node_paths=PackedStringArray("boat", "world_builder") instance=ExtResource("8_sonar_hud_scene")]
+boat = NodePath("../Boat")
+world_builder = NodePath("../WorldBuilder")
+
+[node name="HarborUI" type="CanvasLayer" parent="." unique_id=1736662610 node_paths=PackedStringArray("boat")]
+script = ExtResource("9_harbor_ui_script")
+boat = NodePath("../Boat")
+
+[node name="RoamingThreatDirector" type="Node3D" parent="." node_paths=PackedStringArray("boat", "world_builder")]
+script = ExtResource("13_threat_director_script")
+boat = NodePath("../Boat")
+world_builder = NodePath("../WorldBuilder")
+
+[node name="LightingDebugTuner" type="CanvasLayer" parent="." node_paths=PackedStringArray("moonlight", "world_environment", "storm_director", "boat", "world_builder", "threat_director")]
+script = ExtResource("12_lighting_tuner_script")
+moonlight = NodePath("../DirectionalLight3D")
+world_environment = NodePath("../WorldEnvironment")
+storm_director = NodePath("../StormDirector")
+boat = NodePath("../Boat")
+world_builder = NodePath("../WorldBuilder")
+threat_director = NodePath("../RoamingThreatDirector")

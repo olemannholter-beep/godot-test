@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "godot-inspector": {
+      "command": "python",
+      "args": [
+        "tools/godot_mcp_server.py"
+      ]
+    }
+  }
+}

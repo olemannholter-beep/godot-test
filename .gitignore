@@ -1,0 +1,15 @@
+# Godot 4+ specific ignores
+.godot/
+.mcp_captures/
+godot_helm.png
+godot_helm.png.import
+assets/models/raw_meshy/
+
+# Mono-specific ignores
+.mono/
+data_*/
+mono_crash.*.json
+
+# System/tool ignores
+.DS_Store
+Thumbs.db
