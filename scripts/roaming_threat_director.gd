@@ -1,9 +1,10 @@
 class_name RoamingThreatDirector
 extends Node3D
 
-const MODEL_GHOST_TRAWLER: String = "res://assets/models/enemies/enemy_ghost_trawler.glb"
-const MODEL_LEVIATHAN_HEAD: String = "res://assets/models/enemies/enemy_leviathan_head.glb"
-const MODEL_LEVIATHAN_COIL: String = "res://assets/models/enemies/enemy_leviathan_coil.glb"
+const MODEL_GHOST_TRAWLER: String = "res://assets/models/enemy_ghost_trawler.glb"
+const MODEL_LEVIATHAN_FULL: String = "res://assets/models/enemy_leviathan_full.glb"
+const MODEL_LEVIATHAN_HEAD: String = "res://assets/models/enemy_leviathan_head.glb"
+const MODEL_LEVIATHAN_COIL: String = "res://assets/models/enemy_leviathan_coil.glb"
 const SHADER_VOLUMETRIC_BEAM: String = "res://shaders/volumetric_beam_cone.gdshader"
 
 const STATE_PATROL: int = 0
@@ -23,6 +24,11 @@ const COLOR_LEVIATHAN_EYE_AMBER: Color = Color(0.98, 0.74, 0.18, 1.0)
 @export var safe_harbor_radius: float = 92.0
 @export var initial_ghost_trawler_count: int = 3
 @export var initial_leviathan_count: int = 2
+@export var debug_ignore_player: bool = false
+
+signal debug_ignore_player_changed(enabled: bool)
+
+static var shared_ignore_player: bool = false
 
 var enemy_glow_intensity: float = 1.0
 
@@ -45,6 +51,66 @@ func _ready() -> void:
 	_resolve_references()
 	_init_shared_resources()
 	_spawn_initial_roaming_threats()
+	if _check_cli_peaceful_flags() or debug_ignore_player:
+		set_debug_ignore_player(true)
+	else:
+		shared_ignore_player = false
+
+
+func _check_cli_peaceful_flags() -> bool:
+	var all_args: PackedStringArray = OS.get_cmdline_args()
+	all_args.append_array(OS.get_cmdline_user_args())
+	for raw_arg: String in all_args:
+		var clean_arg: String = raw_arg.strip_edges().to_lower()
+		if clean_arg == "--peaceful" or clean_arg == "--no-aggro" or clean_arg == "--peaceful=true" or clean_arg == "--no-aggro=true":
+			return true
+	return false
+
+
+func set_debug_ignore_player(enabled: bool) -> void:
+	var changed: bool = (debug_ignore_player != enabled) or (shared_ignore_player != enabled)
+	debug_ignore_player = enabled
+	shared_ignore_player = enabled
+	if debug_ignore_player:
+		clear_all_aggro_states()
+	if changed:
+		debug_ignore_player_changed.emit(debug_ignore_player)
+
+
+func is_debug_ignore_player() -> bool:
+	return debug_ignore_player
+
+
+func toggle_debug_ignore_player() -> bool:
+	set_debug_ignore_player(not debug_ignore_player)
+	return debug_ignore_player
+
+
+func clear_all_aggro_states() -> void:
+	_fishing_struggle_timer = 0.0
+	for trawler: Dictionary in _ghost_trawlers:
+		trawler["state"] = STATE_PATROL
+		trawler["state_timer"] = 0.0
+		trawler["cone_exposure_time"] = 0.0
+		trawler["escape_dark_timer"] = 0.0
+		trawler["ram_cooldown"] = 0.0
+		var horn_player: AudioStreamPlayer3D = trawler.get("horn_player") as AudioStreamPlayer3D
+		if horn_player != null and horn_player.playing:
+			horn_player.stop()
+		_apply_ghost_trawler_palette(trawler, COLOR_MIMIC_AMBER, COLOR_MIMIC_BEAM, 1.0, false)
+
+	for lev: Dictionary in _leviathans:
+		lev["state"] = STATE_PATROL
+		lev["state_timer"] = 0.0
+		lev["cone_exposure_time"] = 0.0
+		lev["escape_dark_timer"] = 0.0
+		lev["ram_cooldown"] = 0.0
+		lev["is_lunging"] = false
+		lev["lunge_timer"] = 4.2
+		var rumble_player: AudioStreamPlayer3D = lev.get("rumble_player") as AudioStreamPlayer3D
+		if rumble_player != null and rumble_player.playing:
+			rumble_player.stop()
+		_apply_leviathan_palette(lev, COLOR_LEVIATHAN_EYE_AMBER, COLOR_LEVIATHAN_CYAN, 1.0)
 
 
 func _exit_tree() -> void:
@@ -139,7 +205,7 @@ func _create_ghost_trawler_instance(spawn_pos: Vector3, phase_seed: float) -> Di
 	# Roof Searchlight Gimbal (Sweeping 45 deg left-right in Patrol, locking in Suspicious/Aggro)
 	var searchlight_pivot: Node3D = Node3D.new()
 	searchlight_pivot.name = "RoofSearchlightPivot"
-	searchlight_pivot.position = Vector3(0.0, 2.32, -1.30)
+	searchlight_pivot.position = Vector3(0.0, 4.10, -2.15)
 	visuals.add_child(searchlight_pivot)
 
 	var spotlight: SpotLight3D = SpotLight3D.new()
@@ -187,7 +253,7 @@ func _create_ghost_trawler_instance(spawn_pos: Vector3, phase_seed: float) -> Di
 	# Warm Cabin Interior & Stern Work Lantern OmniLight3D
 	var cabin_light: OmniLight3D = OmniLight3D.new()
 	cabin_light.name = "GhostCabinGlowLight"
-	cabin_light.position = Vector3(0.0, 1.45, -0.78)
+	cabin_light.position = Vector3(0.0, 2.85, -1.60)
 	cabin_light.light_color = COLOR_MIMIC_AMBER
 	cabin_light.light_energy = 2.8 * enemy_glow_intensity
 	cabin_light.omni_range = 12.0
@@ -196,16 +262,16 @@ func _create_ghost_trawler_instance(spawn_pos: Vector3, phase_seed: float) -> Di
 
 	var stern_lantern: OmniLight3D = OmniLight3D.new()
 	stern_lantern.name = "GhostSternWorkLantern"
-	stern_lantern.position = Vector3(0.0, 2.52, 2.88)
+	stern_lantern.position = Vector3(0.0, 3.80, 5.20)
 	stern_lantern.light_color = COLOR_MIMIC_AMBER
 	stern_lantern.light_energy = 3.2 * enemy_glow_intensity
 	stern_lantern.omni_range = 14.0
 	stern_lantern.light_volumetric_fog_energy = 0.95 * enemy_glow_intensity
 	visuals.add_child(stern_lantern)
 
-	# Smokestack Exhaust Particles (belches heavy dark smoke in STATE_AGGRO_PURSUIT)
+	# Smokestack Exhaust Particles (belches heavy dark smoke at stack top on No_Smok Ghost Trawler)
 	var smoke_particles: GPUParticles3D = _create_smokestack_particles()
-	smoke_particles.position = Vector3(0.52, 3.35, -0.06)
+	smoke_particles.position = Vector3(0.0, 4.45, -0.45)
 	visuals.add_child(smoke_particles)
 
 	var horn_player: AudioStreamPlayer3D = AudioStreamPlayer3D.new()
@@ -267,10 +333,12 @@ func _create_leviathan_instance(spawn_pos: Vector3, phase_seed: float) -> Dictio
 
 	var coil_pivots: Array[Node3D] = []
 	var history_points: Array[Vector3] = []
+	var coil_scales: Array[float] = [1.00, 0.82, 0.65, 0.50]
 	for c_i: int in range(4):
 		var coil_node: Node3D = Node3D.new()
 		coil_node.name = "LeviathanCoil_%d" % c_i
-		coil_node.position = Vector3(0.0, -0.35, float(c_i + 1) * 4.4)
+		coil_node.position = Vector3(0.0, -0.55, float(c_i + 1) * 14.5)
+		coil_node.scale = Vector3.ONE * coil_scales[c_i]
 		root_node.add_child(coil_node)
 		if _scene_leviathan_coil != null:
 			var coil_inst: Node3D = _scene_leviathan_coil.instantiate() as Node3D
@@ -281,12 +349,12 @@ func _create_leviathan_instance(spawn_pos: Vector3, phase_seed: float) -> Dictio
 		coil_pivots.append(coil_node)
 
 	for h_i: int in range(32):
-		history_points.append(spawn_pos + Vector3(0.0, 0.0, float(h_i) * 0.8))
+		history_points.append(spawn_pos + Vector3(0.0, 0.0, float(h_i) * 1.8))
 
-	# Eerie moving underwater cyan OmniLight3D
+	# Eerie moving underwater cyan OmniLight3D & breach splash particles
 	var bio_light: OmniLight3D = OmniLight3D.new()
 	bio_light.name = "LeviathanCyanBioLight"
-	bio_light.position = Vector3(0.0, 0.85, -1.2)
+	bio_light.position = Vector3(0.0, 2.2, -1.5)
 	bio_light.light_color = COLOR_LEVIATHAN_CYAN
 	bio_light.light_energy = 5.2 * enemy_glow_intensity
 	bio_light.omni_range = 22.0
@@ -294,15 +362,22 @@ func _create_leviathan_instance(spawn_pos: Vector3, phase_seed: float) -> Dictio
 	bio_light.light_volumetric_fog_energy = 1.65 * enemy_glow_intensity
 	head_pivot.add_child(bio_light)
 
+	var head_splash: GPUParticles3D = _create_leviathan_splash_particles()
+	head_splash.position = Vector3(0.0, 0.15, -0.5)
+	head_pivot.add_child(head_splash)
+
 	var coil_light: OmniLight3D = OmniLight3D.new()
 	coil_light.name = "LeviathanTrailBioLight"
-	coil_light.position = Vector3(0.0, 0.65, 0.0)
+	coil_light.position = Vector3(0.0, 1.15, 0.0)
 	coil_light.light_color = COLOR_LEVIATHAN_CYAN
 	coil_light.light_energy = 3.4 * enemy_glow_intensity
 	coil_light.omni_range = 16.0
 	coil_light.light_volumetric_fog_energy = 1.1 * enemy_glow_intensity
 	if coil_pivots.size() >= 2:
 		coil_pivots[1].add_child(coil_light)
+		var coil_splash: GPUParticles3D = _create_leviathan_splash_particles()
+		coil_splash.position = Vector3(0.0, 0.10, 0.0)
+		coil_pivots[0].add_child(coil_splash)
 	else:
 		root_node.add_child(coil_light)
 
@@ -377,12 +452,55 @@ func _configure_enemy_glb_meshes(
 				dup_mat.emission_energy_multiplier = 6.5 * enemy_glow_intensity
 				secondary_glow_mats.append(dup_mat)
 			elif mat_name != "EyeCornea":
+				if mat_name.begins_with("MatteLeviathan"):
+					dup_mat.roughness = 0.72
+				else:
+					dup_mat.roughness = clampf(maxf(dup_mat.roughness, 0.88), 0.82, 0.95)
+				dup_mat.metallic = minf(dup_mat.metallic, 0.10)
+				dup_mat.metallic_specular = 0.20
+				dup_mat.clearcoat_enabled = false
 				dup_mat.vertex_color_use_as_albedo = true
-				if _shared_micro_normal_tex != null:
+				if _shared_micro_normal_tex != null and dup_mat.normal_texture == null:
 					dup_mat.normal_enabled = true
 					dup_mat.normal_texture = _shared_micro_normal_tex
 					dup_mat.normal_scale = 0.42
 			mesh_inst.set_surface_override_material(s_idx, dup_mat)
+
+
+func _create_leviathan_splash_particles() -> GPUParticles3D:
+	var particles: GPUParticles3D = GPUParticles3D.new()
+	particles.name = "LeviathanBreachSplash"
+	particles.amount = 28
+	particles.lifetime = 0.85
+	particles.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	particles.local_coords = false
+
+	var proc_mat: ParticleProcessMaterial = ParticleProcessMaterial.new()
+	proc_mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	proc_mat.emission_sphere_radius = 1.15
+	proc_mat.direction = Vector3(0.0, 1.0, 0.2)
+	proc_mat.spread = 38.0
+	proc_mat.initial_velocity_min = 1.6
+	proc_mat.initial_velocity_max = 3.8
+	proc_mat.gravity = Vector3(0.0, -7.5, 0.0)
+	proc_mat.scale_min = 0.18
+	proc_mat.scale_max = 0.48
+	particles.process_material = proc_mat
+
+	var sphere: SphereMesh = SphereMesh.new()
+	sphere.radius = 0.18
+	sphere.height = 0.28
+	sphere.radial_segments = 6
+	sphere.rings = 3
+	var foam_mat: StandardMaterial3D = StandardMaterial3D.new()
+	foam_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	foam_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	foam_mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	foam_mat.albedo_color = Color(0.62, 0.78, 0.80, 0.52)
+	foam_mat.roughness = 0.88
+	sphere.material = foam_mat
+	particles.draw_pass_1 = sphere
+	return particles
 
 
 func _create_smokestack_particles() -> GPUParticles3D:
@@ -421,17 +539,23 @@ func _create_smokestack_particles() -> GPUParticles3D:
 
 func _physics_process(delta: float) -> void:
 	_time_sec = BoatController.get_synced_ocean_time()
+	if debug_ignore_player != shared_ignore_player:
+		set_debug_ignore_player(debug_ignore_player)
+
 	if boat == null:
 		_resolve_references()
 		if boat == null:
 			return
 
 	# Track whether player is fighting a hooked struggling fish
-	var fishing_ctrl: FishingController = boat.get_node_or_null("FishingController") as FishingController
-	if fishing_ctrl != null and int(fishing_ctrl.state) == int(FishingController.FishingState.STATE_HOOKED):
-		_fishing_struggle_timer += delta
+	if debug_ignore_player:
+		_fishing_struggle_timer = 0.0
 	else:
-		_fishing_struggle_timer = move_toward(_fishing_struggle_timer, 0.0, delta * 0.5)
+		var fishing_ctrl: FishingController = boat.get_node_or_null("FishingController") as FishingController
+		if fishing_ctrl != null and int(fishing_ctrl.state) == int(FishingController.FishingState.STATE_HOOKED):
+			_fishing_struggle_timer += delta
+		else:
+			_fishing_struggle_timer = move_toward(_fishing_struggle_timer, 0.0, delta * 0.5)
 
 	for t_idx: int in range(_ghost_trawlers.size()):
 		_update_ghost_trawler(_ghost_trawlers[t_idx], delta)
@@ -504,20 +628,30 @@ func _update_ghost_trawler(trawler: Dictionary, delta: float) -> void:
 	var dist_to_player: float = to_player.length()
 	var dir_to_player: Vector3 = (to_player / dist_to_player) if dist_to_player > 0.001 else Vector3.FORWARD
 
-	# 1. Check if player's searchlight cone is shining directly onto this Ghost Trawler (> 1.2s)
-	if _is_enemy_in_player_searchlight_cone(pos):
-		cone_exposure += delta
-		if cone_exposure >= 1.2:
-			if state == STATE_PATROL or state == STATE_COOLDOWN_SEARCH:
-				state = STATE_SUSPICIOUS
-				state_timer = 0.0
-				_play_horn_once(horn_player, 0.92)
-			elif state == STATE_SUSPICIOUS and state_timer >= 0.8:
-				state = STATE_AGGRO_PURSUIT
-				state_timer = 0.0
-				_play_horn_once(horn_player, 0.72)
+	if debug_ignore_player:
+		if state != STATE_PATROL:
+			state = STATE_PATROL
+			state_timer = 0.0
+			escape_dark_timer = 0.0
+			ram_cooldown = 0.0
+			if horn_player != null and horn_player.playing:
+				horn_player.stop()
+		cone_exposure = 0.0
 	else:
-		cone_exposure = move_toward(cone_exposure, 0.0, delta * 0.6)
+		# 1. Check if player's searchlight cone is shining directly onto this Ghost Trawler (> 1.2s)
+		if _is_enemy_in_player_searchlight_cone(pos):
+			cone_exposure += delta
+			if cone_exposure >= 1.2:
+				if state == STATE_PATROL or state == STATE_COOLDOWN_SEARCH:
+					state = STATE_SUSPICIOUS
+					state_timer = 0.0
+					_play_horn_once(horn_player, 0.92)
+				elif state == STATE_SUSPICIOUS and state_timer >= 0.8:
+					state = STATE_AGGRO_PURSUIT
+					state_timer = 0.0
+					_play_horn_once(horn_player, 0.72)
+		else:
+			cone_exposure = move_toward(cone_exposure, 0.0, delta * 0.6)
 
 	# 2. Check if player is inside Ghost Trawler's own front searchlight cone
 	var trawler_beam_fwd: Vector3 = -root_node.global_transform.basis.z
@@ -526,7 +660,7 @@ func _update_ghost_trawler(trawler: Dictionary, delta: float) -> void:
 	trawler_beam_fwd.y = 0.0
 	if trawler_beam_fwd.length_squared() > 0.0001:
 		trawler_beam_fwd = trawler_beam_fwd.normalized()
-	var player_in_trawler_beam: bool = (dist_to_player <= 82.0) and (trawler_beam_fwd.dot(dir_to_player) > 0.84)
+	var player_in_trawler_beam: bool = (not debug_ignore_player) and (dist_to_player <= 82.0) and (trawler_beam_fwd.dot(dir_to_player) > 0.84)
 
 	var detection_radius: float = _compute_player_detection_radius()
 	var manual_grace: float = maxf(0.0, float(trawler.get("manual_spawn_grace_timer", 0.0)) - delta)
@@ -557,7 +691,7 @@ func _update_ghost_trawler(trawler: Dictionary, delta: float) -> void:
 
 			_apply_ghost_trawler_palette(trawler, COLOR_MIMIC_AMBER, COLOR_MIMIC_BEAM, 1.0, false)
 
-			if not player_in_safe_harbor and (player_in_trawler_beam or dist_to_player <= detection_radius):
+			if not debug_ignore_player and not player_in_safe_harbor and (player_in_trawler_beam or dist_to_player <= detection_radius):
 				state = STATE_SUSPICIOUS
 				state_timer = 0.0
 				escape_dark_timer = 0.0
@@ -782,24 +916,36 @@ func _update_leviathan(lev: Dictionary, delta: float) -> void:
 	var dist_to_player: float = to_player.length()
 	var dir_to_player: Vector3 = (to_player / dist_to_player) if dist_to_player > 0.001 else Vector3.FORWARD
 
-	# Check player searchlight cone exposure (> 1.2s)
-	if _is_enemy_in_player_searchlight_cone(pos):
-		cone_exposure += delta
-		if cone_exposure >= 1.2:
-			if state == STATE_PATROL or state == STATE_COOLDOWN_SEARCH:
-				state = STATE_SUSPICIOUS
-				state_timer = 0.0
-				_play_horn_once(rumble_player, 0.90)
-			elif state == STATE_SUSPICIOUS and state_timer >= 0.7:
-				state = STATE_AGGRO_PURSUIT
-				state_timer = 0.0
-				_play_horn_once(rumble_player, 0.74)
+	if debug_ignore_player:
+		if state != STATE_PATROL:
+			state = STATE_PATROL
+			state_timer = 0.0
+			escape_dark_timer = 0.0
+			ram_cooldown = 0.0
+			lev["is_lunging"] = false
+			lev["lunge_timer"] = 4.2
+			if rumble_player != null and rumble_player.playing:
+				rumble_player.stop()
+		cone_exposure = 0.0
 	else:
-		cone_exposure = move_toward(cone_exposure, 0.0, delta * 0.6)
+		# Check player searchlight cone exposure (> 1.2s)
+		if _is_enemy_in_player_searchlight_cone(pos):
+			cone_exposure += delta
+			if cone_exposure >= 1.2:
+				if state == STATE_PATROL or state == STATE_COOLDOWN_SEARCH:
+					state = STATE_SUSPICIOUS
+					state_timer = 0.0
+					_play_horn_once(rumble_player, 0.90)
+				elif state == STATE_SUSPICIOUS and state_timer >= 0.7:
+					state = STATE_AGGRO_PURSUIT
+					state_timer = 0.0
+					_play_horn_once(rumble_player, 0.74)
+		else:
+			cone_exposure = move_toward(cone_exposure, 0.0, delta * 0.6)
 
 	var detection_radius: float = _compute_player_detection_radius()
 	# Leviathan also attracts if player fights a struggling fish for too long (> 5.0s)
-	if _fishing_struggle_timer > 5.0:
+	if not debug_ignore_player and _fishing_struggle_timer > 5.0:
 		detection_radius = maxf(detection_radius, 115.0)
 
 	var manual_grace: float = maxf(0.0, float(lev.get("manual_spawn_grace_timer", 0.0)) - delta)
@@ -822,7 +968,7 @@ func _update_leviathan(lev: Dictionary, delta: float) -> void:
 			target_speed = 5.6
 			_apply_leviathan_palette(lev, COLOR_LEVIATHAN_EYE_AMBER, COLOR_LEVIATHAN_CYAN, 1.0)
 
-			if not player_in_shallow_safe_water and dist_to_player <= detection_radius:
+			if not debug_ignore_player and not player_in_shallow_safe_water and dist_to_player <= detection_radius:
 				state = STATE_SUSPICIOUS
 				state_timer = 0.0
 				_play_horn_once(rumble_player, 0.95)
@@ -957,12 +1103,12 @@ func _update_leviathan(lev: Dictionary, delta: float) -> void:
 		var lateral_sway: float = sin(_time_sec * 2.1 - seg_idx_f * 0.95 + phase_seed) * 0.62
 		coil_node.position = Vector3(
 			lateral_sway,
-			wave_base_y + 0.12 + coil_sine * 0.68,
-			seg_idx_f * 4.35
+			wave_base_y - 0.35 + coil_sine * 0.65,
+			seg_idx_f * 14.5
 		)
-		coil_node.rotation.x = coil_cos * 0.24
-		coil_node.rotation.y = cos(_time_sec * 2.1 - seg_idx_f * 0.95 + phase_seed) * 0.18
-		coil_node.rotation.z = lateral_sway * 0.20
+		coil_node.rotation.x = coil_cos * 0.18
+		coil_node.rotation.y = cos(_time_sec * 2.1 - seg_idx_f * 0.95 + phase_seed) * 0.16
+		coil_node.rotation.z = lateral_sway * 0.18
 
 	if bio_light != null and coil_light != null:
 		var pulse: float = 0.85 + 0.25 * sin(_time_sec * 3.2 + phase_seed)

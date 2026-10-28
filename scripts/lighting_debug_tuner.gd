@@ -42,7 +42,7 @@ const DEFAULT_STERN_LANTERN_ENERGY: float = 3.2
 const DEFAULT_STERN_LANTERN_RANGE: float = 9.5
 const DEFAULT_WHEELHOUSE_GLOW_ENERGY: float = 1.6
 const DEFAULT_BOAT_RIM_FILL_ENERGY: float = 0.55
-const DEFAULT_BOAT_WATERLINE_OFFSET: float = -0.04
+const DEFAULT_BOAT_WATERLINE_OFFSET: float = 0.24
 const DEFAULT_WAVE_ROCKING_INTENSITY: float = 1.0
 const DEFAULT_FP_FISHING_FOV: float = 85.0
 const DEFAULT_HELM_FOV: float = 65.0
@@ -78,6 +78,7 @@ var _boat_rim_fill_light: OmniLight3D = null
 
 var _panel: PanelContainer = null
 var _status_label: Label = null
+var _peaceful_toggle_btn: Button = null
 var _suppress_save: bool = false
 var _sliders: Dictionary[String, HSlider] = {}
 var _value_labels: Dictionary[String, Label] = {}
@@ -97,6 +98,9 @@ func _deferred_boot_apply() -> void:
 	# Wait one additional frame so WorldBuilder and BoatController finish spawning/configuring lights
 	await get_tree().process_frame
 	_resolve_scene_nodes()
+	if threat_director != null and not threat_director.debug_ignore_player_changed.is_connected(_on_threat_ignore_player_changed):
+		threat_director.debug_ignore_player_changed.connect(_on_threat_ignore_player_changed)
+	_refresh_peaceful_button_display()
 	_load_and_apply_saved_settings()
 
 
@@ -202,7 +206,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var key_event: InputEventKey = event as InputEventKey
 		if key_event.pressed and not key_event.echo:
 			var code: Key = key_event.physical_keycode if key_event.physical_keycode != KEY_NONE else key_event.keycode
-			if code == KEY_F9:
+			if code == KEY_F10 or (code == KEY_F9 and key_event.shift_pressed):
 				if _panel != null:
 					_panel.visible = not _panel.visible
 					if _camera != null:
@@ -345,6 +349,13 @@ func _build_tuner_ui() -> void:
 	# SECTION 4 — ROAMING MARITIME THREATS & LIVE SPAWN CONTROLS
 	# =========================================================================
 	_add_section_header(list_vbox, "4. ROAMING THREATS & ENEMY AI TUNING")
+	_peaceful_toggle_btn = Button.new()
+	_peaceful_toggle_btn.name = "PeacefulModeToggleBtn"
+	_peaceful_toggle_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_peaceful_toggle_btn.pressed.connect(_on_toggle_peaceful_mode_pressed)
+	list_vbox.add_child(_peaceful_toggle_btn)
+	_refresh_peaceful_button_display()
+
 	_register_slider(list_vbox, "enemy_glow_intensity", "Enemy Glow Intensity", 0.1, 4.0, 0.05, "%.2fx")
 	_register_slider(list_vbox, "shipwreck_scale_multiplier", "Shipwreck Scale Multiplier", 0.5, 2.5, 0.05, "%.2fx")
 
@@ -648,6 +659,37 @@ func _on_spawn_custom_shipwreck_pressed() -> void:
 			_status_label.text = "Spawned / Previewed Custom Shipwreck 40m ahead of bow!"
 
 
+func _on_toggle_peaceful_mode_pressed() -> void:
+	_resolve_scene_nodes()
+	var boat_ctrl: BoatController = boat as BoatController
+	if boat_ctrl != null:
+		boat_ctrl.toggle_peaceful_mode()
+	elif threat_director != null:
+		threat_director.toggle_debug_ignore_player()
+	_refresh_peaceful_button_display()
+	if _status_label != null:
+		var is_peaceful: bool = threat_director.is_debug_ignore_player() if threat_director != null else RoamingThreatDirector.shared_ignore_player
+		_status_label.text = "Peaceful Mode ENABLED (Enemies ignore player)" if is_peaceful else "Enemy Aggro ENABLED (Normal pursuit & detection)"
+
+
+func _on_threat_ignore_player_changed(_enabled: bool) -> void:
+	_refresh_peaceful_button_display()
+
+
+func _refresh_peaceful_button_display() -> void:
+	if _peaceful_toggle_btn == null:
+		return
+	var is_peaceful: bool = RoamingThreatDirector.shared_ignore_player
+	if threat_director != null:
+		is_peaceful = threat_director.is_debug_ignore_player()
+	if is_peaceful:
+		_peaceful_toggle_btn.text = "🕊 [P] Enemy Aggro: OFF (Peaceful Explore)"
+		_peaceful_toggle_btn.add_theme_color_override("font_color", Color(0.28, 0.92, 0.56, 1.0))
+	else:
+		_peaceful_toggle_btn.text = "⚔ [P] Enemy Aggro: ON (Click to Toggle Peaceful)"
+		_peaceful_toggle_btn.add_theme_color_override("font_color", Color(0.92, 0.44, 0.40, 1.0))
+
+
 func _on_spawn_ghost_trawler_pressed() -> void:
 	_resolve_scene_nodes()
 	if threat_director != null:
@@ -810,6 +852,8 @@ func _load_and_apply_saved_settings() -> void:
 						0.0,
 						1.5
 					)
+				if float(loaded_values.get("boat_waterline_offset", DEFAULT_BOAT_WATERLINE_OFFSET)) < 0.08:
+					loaded_values["boat_waterline_offset"] = DEFAULT_BOAT_WATERLINE_OFFSET
 
 	_suppress_save = true
 	for key: String in loaded_values.keys():

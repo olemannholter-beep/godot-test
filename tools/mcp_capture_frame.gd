@@ -138,8 +138,10 @@ func _get_named_view_png_path(mode: String) -> String:
 	match mode:
 		"fishing":
 			return "res://.mcp_captures/godot_fishing.png"
-		"first_person", "fp", "deck":
+		"first_person", "fp", "deck", "aft":
 			return "res://.mcp_captures/godot_first_person.png"
+		"overhead":
+			return "res://.mcp_captures/godot_overhead.png"
 		"harbor_ui", "harbor", "ui":
 			return "res://.mcp_captures/godot_harbor_ui.png"
 		"bow_light", "bow", "searchlight":
@@ -148,6 +150,10 @@ func _get_named_view_png_path(mode: String) -> String:
 			return "res://.mcp_captures/godot_shipwreck.png"
 		"wave_probes", "probes":
 			return "res://.mcp_captures/godot_wave_probes.png"
+		"enemies_aggro", "enemies":
+			return "res://.mcp_captures/godot_enemies_aggro.png"
+		"harbor_overview", "lighthouse":
+			return "res://.mcp_captures/godot_harbor_overview.png"
 		_:
 			return "res://.mcp_captures/godot_helm.png"
 
@@ -164,7 +170,7 @@ func _apply_view_preset(mode: String, delta: float) -> void:
 		fishing_ctrl = boat.get_node_or_null("FishingController") as FishingController
 
 	match mode:
-		"first_person", "fp", "deck", "fishing":
+		"first_person", "fp", "deck", "fishing", "aft":
 			if not _preset_applied:
 				_preset_applied = true
 				if harbor_ui != null:
@@ -174,6 +180,19 @@ func _apply_view_preset(mode: String, delta: float) -> void:
 					boat.rotation.y = deg_to_rad(131.0)
 				if fishing_ctrl != null:
 					fishing_ctrl._enter_first_person_deck_mode()
+					fishing_ctrl.state = FishingController.FishingState.STATE_WAITING_BITE
+					fishing_ctrl._in_strike_window = false
+					fishing_ctrl._nibbles_remaining = 99
+					fishing_ctrl._bite_eval_timer = 99.0
+					var aft_dir: Vector3 = boat.global_transform.basis.z if boat != null else Vector3.BACK
+					aft_dir.y = 0.0
+					if aft_dir.length_squared() > 0.001:
+						aft_dir = aft_dir.normalized()
+					var bob_pos: Vector3 = (boat.global_position if boat != null else Vector3.ZERO) + aft_dir * 11.5 + Vector3(0.0, 0.12, 0.0)
+					fishing_ctrl._bobber_world_pos = bob_pos
+					if fishing_ctrl._bobber_node != null:
+						fishing_ctrl._bobber_node.global_position = bob_pos
+						fishing_ctrl._bobber_node.visible = true
 				elif cam != null:
 					cam.fishing_camera_active = true
 					cam.reset_fp_angles()
@@ -189,6 +208,11 @@ func _apply_view_preset(mode: String, delta: float) -> void:
 				var full_deck_basis: Basis = deck_parent.global_transform.basis.orthonormalized()
 				var stabilized_deck_basis: Basis = boat_yaw_basis.slerp(full_deck_basis, 0.35)
 				cam.global_transform.basis = (stabilized_deck_basis * local_look_basis).orthonormalized()
+				if fishing_ctrl != null:
+					fishing_ctrl._in_strike_window = false
+					fishing_ctrl._nibbles_remaining = 99
+					fishing_ctrl._update_rod_viewmodel_articulation(delta)
+					fishing_ctrl._update_3d_fishing_line()
 
 		"harbor_ui", "harbor", "ui":
 			if not _preset_applied:
@@ -219,29 +243,52 @@ func _apply_view_preset(mode: String, delta: float) -> void:
 				cam.global_position = cam.focus_point + offset
 				cam.look_at(cam.focus_point, Vector3.UP)
 
-		"shipwreck", "wreck":
+		"overhead":
 			if not _preset_applied:
 				_preset_applied = true
 				if harbor_ui != null:
 					harbor_ui._set_modal_open(false)
 				if fishing_ctrl != null:
 					fishing_ctrl._exit_to_navigation_helm()
-				var wb: WorldBuilder = _scene_root.get_node_or_null("WorldBuilder") as WorldBuilder
-				if wb != null and boat != null:
-					wb.spawn_custom_shipwreck_ahead(boat, 28.0)
 			if cam != null and boat != null:
 				cam.fishing_camera_active = false
-				cam.target_yaw = 0.0
-				cam.current_yaw = 0.0
-				cam.target_pitch = deg_to_rad(-30.0)
+				cam.target_yaw = deg_to_rad(28.0)
+				cam.current_yaw = cam.target_yaw
+				cam.target_pitch = deg_to_rad(-42.0)
 				cam.current_pitch = cam.target_pitch
-				cam.target_distance = 24.0
+				cam.target_distance = 9.5
+				cam.current_distance = cam.target_distance
+				cam.focus_point = boat.global_position + Vector3(0.0, 1.1, 0.0)
+				var oh_offset: Vector3 = Basis.from_euler(Vector3(cam.current_pitch, cam.current_yaw, 0.0)) * Vector3(0.0, 0.0, cam.current_distance)
+				cam.global_position = cam.focus_point + oh_offset
+				cam.look_at(cam.focus_point, Vector3.UP)
+
+		"shipwreck", "wreck", "harbor_and_wreck":
+			if not _preset_applied:
+				_preset_applied = true
+				if harbor_ui != null:
+					harbor_ui._set_modal_open(false)
+				if fishing_ctrl != null:
+					fishing_ctrl._exit_to_navigation_helm()
+				if mode == "harbor_and_wreck" and boat != null:
+					boat.global_position = Vector3(0.0, boat.global_position.y, -18.0)
+					boat.rotation = Vector3(0.0, deg_to_rad(22.0), 0.0)
+				var wb: WorldBuilder = _scene_root.get_node_or_null("WorldBuilder") as WorldBuilder
+				if wb != null and boat != null:
+					wb.spawn_custom_shipwreck_ahead(boat, 34.0)
+			if cam != null and boat != null:
+				cam.fishing_camera_active = false
+				cam.target_yaw = deg_to_rad(-12.0) if mode == "harbor_and_wreck" else 0.0
+				cam.current_yaw = cam.target_yaw
+				cam.target_pitch = deg_to_rad(-22.0)
+				cam.current_pitch = cam.target_pitch
+				cam.target_distance = 26.0
 				cam.current_distance = cam.target_distance
 				var fwd_vec_w: Vector3 = -boat.global_transform.basis.z
 				fwd_vec_w.y = 0.0
 				if fwd_vec_w.length_squared() > 0.001:
 					fwd_vec_w = fwd_vec_w.normalized()
-				cam.focus_point = boat.global_position + fwd_vec_w * 14.0 + Vector3(0.0, 1.5, 0.0)
+				cam.focus_point = boat.global_position + fwd_vec_w * 18.0 + Vector3(2.0, 1.4, 0.0)
 				var wreck_offset: Vector3 = Basis.from_euler(Vector3(cam.current_pitch, cam.current_yaw, 0.0)) * Vector3(0.0, 0.0, cam.current_distance)
 				cam.global_position = cam.focus_point + wreck_offset
 				cam.look_at(cam.focus_point, Vector3.UP)
@@ -267,6 +314,52 @@ func _apply_view_preset(mode: String, delta: float) -> void:
 				cam.focus_point = boat.global_position + Vector3(0.0, 0.35, 0.0)
 				var probe_offset: Vector3 = Basis.from_euler(Vector3(cam.current_pitch, cam.current_yaw, 0.0)) * Vector3(0.0, 0.0, cam.current_distance)
 				cam.global_position = cam.focus_point + probe_offset
+				cam.look_at(cam.focus_point, Vector3.UP)
+
+		"enemies_aggro", "enemies":
+			if not _preset_applied:
+				_preset_applied = true
+				if harbor_ui != null:
+					harbor_ui._set_modal_open(false)
+				if fishing_ctrl != null:
+					fishing_ctrl._exit_to_navigation_helm()
+				if boat != null:
+					boat.global_position = Vector3(0.0, boat.global_position.y, -260.0)
+					boat.rotation = Vector3.ZERO
+				var threat_dir: RoamingThreatDirector = _scene_root.get_node_or_null("RoamingThreatDirector") as RoamingThreatDirector
+				if threat_dir != null:
+					var tr_node: Node3D = threat_dir.spawn_ghost_trawler_ahead(25.0)
+					var lv_node: Node3D = threat_dir.spawn_leviathan_ahead(24.0)
+					if tr_node != null:
+						tr_node.global_position = Vector3(-6.5, 0.0, -284.0)
+						tr_node.rotation.y = deg_to_rad(-142.0)
+					if lv_node != null:
+						lv_node.global_position = Vector3(5.5, 0.0, -282.0)
+						lv_node.rotation.y = deg_to_rad(138.0)
+			if cam != null and boat != null:
+				cam.fishing_camera_active = false
+				cam.target_yaw = deg_to_rad(18.0)
+				cam.current_yaw = cam.target_yaw
+				cam.target_pitch = deg_to_rad(-25.0)
+				cam.current_pitch = cam.target_pitch
+				cam.target_distance = 28.0
+				cam.current_distance = cam.target_distance
+				cam.focus_point = boat.global_position + Vector3(1.5, 1.8, -22.0)
+				var enemy_offset: Vector3 = Basis.from_euler(Vector3(cam.current_pitch, cam.current_yaw, 0.0)) * Vector3(0.0, 0.0, cam.current_distance)
+				cam.global_position = cam.focus_point + enemy_offset
+				cam.look_at(cam.focus_point, Vector3.UP)
+
+		"harbor_overview", "lighthouse":
+			if not _preset_applied:
+				_preset_applied = true
+				if harbor_ui != null:
+					harbor_ui._set_modal_open(false)
+				if fishing_ctrl != null:
+					fishing_ctrl._exit_to_navigation_helm()
+			if cam != null:
+				cam.fishing_camera_active = false
+				cam.focus_point = Vector3(0.0, 15.0, 42.0)
+				cam.global_position = Vector3(24.0, 26.0, 2.0)
 				cam.look_at(cam.focus_point, Vector3.UP)
 
 		_:

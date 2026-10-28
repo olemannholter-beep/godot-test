@@ -161,15 +161,15 @@ void vertex() {
 
 	// Normalized ellipsoidal distance strictly inside the inner hull footprint (never depressing water outside the hull walls):
 	vec3 hull_scale = boat_hull_half_size / vec3(1.85, 2.2, 5.2);
-	vec2 inner_half_xz = vec2(0.78 * hull_scale.x, 2.05 * hull_scale.z);
+	vec2 inner_half_xz = vec2(0.86 * hull_scale.x, 2.22 * hull_scale.z);
 	vec2 horiz_norm = local_pos.xz / max(inner_half_xz, vec2(0.001));
 	float hull_dist_sq = dot(horiz_norm, horiz_norm);
 
 	// If the vertex is horizontally inside the inner hull footprint and below the gunwales:
-	if (hull_dist_sq < 1.0 && local_pos.y < boat_hull_half_size.y && local_pos.y > -boat_hull_half_size.y) {
-		// Depress the wave displacement smoothly below the floorboards/deck:
+	if (hull_dist_sq < 1.0 && local_pos.y < boat_hull_half_size.y + 0.8 && local_pos.y > -boat_hull_half_size.y) {
+		// Depress the wave displacement smoothly well below the aft deck floorboards:
 		float depress_mask = clamp(1.0 - hull_dist_sq, 0.0, 1.0);
-		float depress_y = depress_mask * (local_pos.y + 0.55);
+		float depress_y = depress_mask * max(0.0, local_pos.y + 1.05);
 		displacement.y -= depress_y;
 		displaced_world_pos.y -= depress_y;
 	}
@@ -186,11 +186,12 @@ void vertex() {
 void fragment() {
 	vec3 local_frag_pos = (boat_inv_xform * vec4(v_world_pos, 1.0)).xyz;
 	vec3 hull_scale = boat_hull_half_size / vec3(1.85, 2.2, 5.2);
-	float bow_taper = clamp((-local_frag_pos.z / max(hull_scale.z, 0.001) - 0.55) / 1.65, 0.0, 1.0);
-	float stern_taper = clamp((local_frag_pos.z / max(hull_scale.z, 0.001) - 1.05) / 1.20, 0.0, 1.0);
-	float inner_half_w = mix(0.82, 0.08, bow_taper * bow_taper) * mix(1.0, 0.72, stern_taper) * hull_scale.x;
-	vec3 inner_hull_bounds = vec3(inner_half_w, boat_hull_half_size.y, 2.18 * hull_scale.z);
-	if (all(lessThan(abs(local_frag_pos), inner_hull_bounds * 0.95))) {
+	// Pointed bow at -Z (tapers from z = -0.65m to -2.30m) and wide flat stern/aft deck at +Z (extends to z = +2.24m)
+	float bow_taper = clamp((-local_frag_pos.z / max(hull_scale.z, 0.001) - 0.65) / 1.65, 0.0, 1.0);
+	float stern_taper = clamp((local_frag_pos.z / max(hull_scale.z, 0.001) - 1.55) / 0.85, 0.0, 1.0);
+	float inner_half_w = mix(0.88, 0.08, bow_taper * bow_taper) * mix(1.0, 0.80, stern_taper) * hull_scale.x;
+	vec3 inner_hull_bounds = vec3(inner_half_w, boat_hull_half_size.y + 0.6, 2.26 * hull_scale.z);
+	if (all(lessThan(abs(local_frag_pos), inner_hull_bounds * 0.96))) {
 		discard;
 	}
 

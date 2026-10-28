@@ -13,3 +13,5 @@ mono_crash.*.json
 # System/tool ignores
 .DS_Store
 Thumbs.db
+__pycache__/
+*.pyc

@@ -21,7 +21,7 @@ extends Camera3D
 @export_group("Follow Settings")
 @export var follow_smoothness: float = 6.0
 @export var fishing_camera_smoothness: float = 10.0
-@export var fp_deck_local_offset: Vector3 = Vector3(0.0, 1.95, 1.35)
+@export var fp_deck_local_offset: Vector3 = Vector3(0.0, 1.85, 1.25)
 
 @export_group("First-Person Look Settings")
 @export var fp_mouse_sensitivity: float = 0.0026
@@ -55,7 +55,7 @@ var _is_orbiting: bool = false
 var _was_fishing_active: bool = false
 var _shake_time: float = 0.0
 var _sway_offset_rot: Vector3 = Vector3.ZERO
-var _base_anchor_pos: Vector3 = Vector3(0.32, -0.28, -0.42)
+var _base_anchor_pos: Vector3 = Vector3(0.32, -0.34, -0.52)
 
 
 func _ready() -> void:

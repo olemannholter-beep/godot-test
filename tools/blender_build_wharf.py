@@ -1242,11 +1242,11 @@ def build_lighthouse_and_cables(
     objects: List[bpy.types.Object] = []
     lh_x, lh_z = 0.0, 44.0
 
-    # Keeper's Cottage attached to base of tower (-4.8, 10.4, 41.6)
+    # Keeper's Cottage attached beside base of HarborLighthouse tower (-6.2, 10.4, 41.6)
     objects.extend(
         build_slumped_building(
             name="KeepersCottage",
-            center_g=(-4.8, 10.4, 41.6),
+            center_g=(-6.2, 10.4, 41.6),
             width=5.2,
             height=3.4,
             depth=4.6,
@@ -1262,124 +1262,11 @@ def build_lighthouse_and_cables(
             seed=809,
         )
     )
-    objects.append(create_box_g("CottageDoor", (-6.1, 11.55, 39.26), (1.15, 2.10, 0.14), mats["WeatheredTimber"], bevel_width=0.01))
-    objects.append(create_box_g("CottageDoorLintel", (-6.1, 12.68, 39.22), (1.38, 0.22, 0.24), mats["LighthouseStone"], bevel_width=0.01))
+    objects.append(create_box_g("CottageDoor", (-7.5, 11.55, 39.26), (1.15, 2.10, 0.14), mats["WeatheredTimber"], bevel_width=0.01))
+    objects.append(create_box_g("CottageDoorLintel", (-7.5, 12.68, 39.22), (1.38, 0.22, 0.24), mats["LighthouseStone"], bevel_width=0.01))
 
-    # Stepped octagonal/16-sided plinth foundation (y = 8.4m to 10.7m)
-    objects.append(create_cylinder_g("LighthousePlinth", (lh_x, 8.4, lh_z), (lh_x, 10.7, lh_z), 5.1, 4.55, mats["LighthouseStone"], segments=20))
-
-    # 26m Tapered Masonry Tower (y = 10.5m to 31.1m) with middle crimson LighthouseBand stripe
-    tower_mesh = bpy.data.meshes.new("LighthouseTower_mesh")
-    tower_obj = bpy.data.objects.new("LighthouseTower", tower_mesh)
-    bpy.context.collection.objects.link(tower_obj)
-    tower_mesh.materials.append(mats["LighthouseStone"])  # slot 0
-    tower_mesh.materials.append(mats["LighthouseBand"])   # slot 1
-
-    bm_t = bmesh.new()
-    num_courses = 24
-    tower_y0, tower_y1 = 10.5, 31.1
-    course_h = (tower_y1 - tower_y0) / float(num_courses)
-    segs = 24
-
-    rings_t: List[List[bmesh.types.BMVert]] = []
-    for c_i in range(num_courses + 1):
-        u = float(c_i) / float(num_courses)
-        cy = tower_y0 + u * (tower_y1 - tower_y0)
-        rad = 4.22 - u * (4.22 - 2.62)
-        ring: List[bmesh.types.BMVert] = []
-        for s_i in range(segs):
-            ang = (2.0 * math.pi * float(s_i)) / float(segs)
-            vx = lh_x + math.cos(ang) * rad
-            vz = lh_z + math.sin(ang) * rad
-            ring.append(bm_t.verts.new(g2b((vx, cy, vz))))
-        rings_t.append(ring)
-
-    for c_i in range(num_courses):
-        r0 = rings_t[c_i]
-        r1 = rings_t[c_i + 1]
-        cy_mid = tower_y0 + (float(c_i) + 0.5) * course_h
-        mat_slot = 1 if (17.4 <= cy_mid <= 24.8) else 0
-        for s_i in range(segs):
-            ns = (s_i + 1) % segs
-            f = bm_t.faces.new((r0[s_i], r0[ns], r1[ns], r1[s_i]))
-            f.material_index = mat_slot
-
-    bmesh.ops.recalc_face_normals(bm_t, faces=bm_t.faces)
-    bm_t.to_mesh(tower_mesh)
-    bm_t.free()
-
-    # Boolean-carved slit windows with stone lintels & AmberGlass panes
-    slit_windows = [
-        (13.6,  0.00, 3.96),
-        (17.2, -0.48, 3.70),
-        (20.8,  0.52, 3.42),
-        (25.2, -0.52, 3.08),
-        (28.8,  0.00, 2.80),
-    ]
-    slit_cutters: List[bpy.types.Object] = []
-    for s_idx, (sy, s_ang, s_rad) in enumerate(slit_windows):
-        sx_p = lh_x + math.sin(s_ang) * s_rad
-        sz_p = lh_z - math.cos(s_ang) * s_rad
-        yaw_w = -math.degrees(s_ang)
-
-        cutter = create_box_g(f"LH_SlitCutter_{s_idx}", (sx_p, sy, sz_p), (0.48, 1.42, 0.55), mats["DarkMetal"], yaw_deg=yaw_w)
-        slit_cutters.append(cutter)
-
-        # Stone lintel & sill
-        objects.append(create_box_g(f"LH_SlitLintel_{s_idx}", (sx_p, sy + 0.78, sz_p), (0.72, 0.18, 0.48), mats["LighthouseStone"], yaw_deg=yaw_w, bevel_width=0.01))
-        objects.append(create_box_g(f"LH_SlitSill_{s_idx}", (sx_p, sy - 0.78, sz_p), (0.72, 0.16, 0.48), mats["LighthouseStone"], yaw_deg=yaw_w, bevel_width=0.01))
-        # Recessed AmberGlass pane & iron bars
-        objects.append(create_box_g(f"LH_SlitGlass_{s_idx}", (sx_p, sy, sz_p), (0.42, 1.36, 0.34), mats["AmberGlass"], yaw_deg=yaw_w))
-        objects.append(create_box_g(f"LH_SlitBar_{s_idx}", (sx_p, sy, sz_p), (0.48, 0.06, 0.38), mats["DarkMetal"], yaw_deg=yaw_w))
-
-    bpy.ops.object.select_all(action="DESELECT")
-    for sc in slit_cutters:
-        sc.select_set(True)
-    bpy.context.view_layer.objects.active = slit_cutters[0]
-    bpy.ops.object.join()
-    joined_slit_cutter = bpy.context.active_object
-
-    lh_bool = tower_obj.modifiers.new(name="SlitCutouts", type="BOOLEAN")
-    lh_bool.operation = "DIFFERENCE"
-    lh_bool.object = joined_slit_cutter
-    lh_bool.solver = "EXACT"
-    apply_all_modifiers(tower_obj)
-    bpy.data.objects.remove(joined_slit_cutter, do_unlink=True)
-    objects.append(tower_obj)
-
-    # Flared Corbelled Gallery Balcony (y = 30.85m to 32.22m) with Iron Railings
-    objects.append(create_cylinder_g("LH_CorbelLower", (lh_x, 30.85, lh_z), (lh_x, 31.35, lh_z), 2.64, 2.95, mats["LighthouseStone"], segments=20))
-    objects.append(create_cylinder_g("LH_CorbelUpper", (lh_x, 31.35, lh_z), (lh_x, 31.80, lh_z), 2.95, 3.28, mats["LighthouseStone"], segments=20))
-    objects.append(create_cylinder_g("LH_GalleryDeck", (lh_x, 31.80, lh_z), (lh_x, 32.22, lh_z), 3.28, 3.42, mats["RustIron"], segments=20))
-
-    for r_idx in range(16):
-        ang = (2.0 * math.pi * float(r_idx)) / 16.0
-        next_ang = (2.0 * math.pi * float((r_idx + 1) % 16)) / 16.0
-        rx_p, rz_p = lh_x + math.cos(ang) * 3.26, lh_z + math.sin(ang) * 3.26
-        nx_p, nz_p = lh_x + math.cos(next_ang) * 3.26, lh_z + math.sin(next_ang) * 3.26
-        objects.append(create_cylinder_g(f"LH_BalconyPost_{r_idx}", (rx_p, 32.22, rz_p), (rx_p, 33.30, rz_p), 0.05, 0.045, mats["RustIron"], segments=6))
-        objects.append(create_cylinder_g(f"LH_BalconyRailM_{r_idx}", (rx_p, 32.75, rz_p), (nx_p, 32.75, nz_p), 0.038, 0.038, mats["RustIron"], segments=6))
-        objects.append(create_cylinder_g(f"LH_BalconyRailT_{r_idx}", (rx_p, 33.26, rz_p), (nx_p, 33.26, nz_p), 0.045, 0.045, mats["RustIron"], segments=6))
-
-    # Cylindrical Glass Lattice Lantern Room (BeaconLens centered at y = 33.6m)
-    objects.append(create_cylinder_g("LH_BeaconLensCore", (lh_x, 32.20, lh_z), (lh_x, 35.10, lh_z), 2.14, 2.14, mats["BeaconLens"], segments=20))
-    for ring_y in (32.30, 33.60, 35.00):
-        objects.append(create_cylinder_g(f"LH_GlazingRing_{ring_y:.1f}", (lh_x, ring_y - 0.05, lh_z), (lh_x, ring_y + 0.05, lh_z), 2.21, 2.21, mats["DarkMetal"], segments=20))
-    for lat_idx in range(16):
-        ang0 = (2.0 * math.pi * float(lat_idx)) / 16.0
-        ang1 = (2.0 * math.pi * float((lat_idx + 1) % 16)) / 16.0
-        lx0, lz0 = lh_x + math.cos(ang0) * 2.19, lh_z + math.sin(ang0) * 2.19
-        lx1, lz1 = lh_x + math.cos(ang1) * 2.19, lh_z + math.sin(ang1) * 2.19
-        objects.append(create_cylinder_g(f"LH_LatticeVert_{lat_idx}", (lx0, 32.22, lz0), (lx0, 35.08, lz0), 0.04, 0.04, mats["DarkMetal"], segments=6))
-        if lat_idx % 2 == 0:
-            objects.append(create_cylinder_g(f"LH_LatticeDiag_{lat_idx}", (lx0, 32.30, lz0), (lx1, 35.00, lz1), 0.028, 0.028, mats["DarkMetal"], segments=6))
-
-    # Copper-Patina Domed Cupola Roof (CoastalMoss) with Lightning Rod (top at y = 36.5m)
-    objects.append(create_cylinder_g("LH_CupolaEave", (lh_x, 35.05, lh_z), (lh_x, 35.25, lh_z), 2.52, 2.40, mats["RustIron"], segments=20))
-    objects.append(create_cylinder_g("LH_CupolaDome1", (lh_x, 35.25, lh_z), (lh_x, 35.65, lh_z), 2.36, 1.72, mats["CoastalMoss"], segments=20))
-    objects.append(create_cylinder_g("LH_CupolaDome2", (lh_x, 35.65, lh_z), (lh_x, 35.95, lh_z), 1.72, 0.68, mats["CoastalMoss"], segments=20))
-    objects.append(create_cylinder_g("LH_CupolaDome3", (lh_x, 35.95, lh_z), (lh_x, 36.12, lh_z), 0.68, 0.20, mats["CoastalMoss"], segments=20))
-    objects.append(create_cylinder_g("LH_LightningRod", (lh_x, 36.12, lh_z), (lh_x, 36.50, lh_z), 0.06, 0.015, mats["DarkMetal"], segments=10))
+    # Note: The lighthouse tower itself is spawned from `res://assets/models/harbor_lighthouse.glb`
+    # at (0.0, 10.5, 44.0) by WorldBuilder (`_build_wharf_port()`).
 
     # --- Drooping 3D Catenary Power / Lantern Cables (bevel_depth = 0.02, DarkMetal) ---
     cable_spans = [
@@ -1390,7 +1277,7 @@ def build_lighthouse_and_cables(
         ("Cable_Post2_Cannery", lamp_post_tops[2], (-1.2, 8.2, 22.1), 0.72),
         ("Cable_Post3_Cannery", lamp_post_tops[3], (5.2, 8.2, 22.1), 0.65),
         ("Cable_Post3_NetShanty", lamp_post_tops[3], (11.5, 4.9, 15.6), 0.48),
-        ("Cable_Cannery_Lighthouse", (2.0, 9.8, 27.6), (0.0, 23.8, 40.65), 1.75),
+        ("Cable_Cannery_Lighthouse", (2.0, 9.8, 27.6), (0.0, 22.0, 41.5), 1.65),
     ]
     objects.append(create_cylinder_g("CanneryRoofPole", (2.0, 8.2, 27.6), (2.0, 9.9, 27.6), 0.08, 0.06, mats["WeatheredTimber"], segments=8))
     for cname, p_a, p_b, sag in cable_spans:

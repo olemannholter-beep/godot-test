@@ -14,6 +14,7 @@ const MODEL_POI_SEA_FORT: String = "res://assets/models/poi_sea_fort_tower.glb"
 const MODEL_POI_LEVIATHAN: String = "res://assets/models/poi_leviathan_ribcage.glb"
 const MODEL_POI_LIGHTSHIP: String = "res://assets/models/poi_derelict_lightship.glb"
 const MODEL_RUSTED_BUOY: String = "res://assets/models/rusted_warning_buoy.glb"
+const MODEL_HARBOR_LIGHTHOUSE: String = "res://assets/models/harbor_lighthouse.glb"
 const SHADER_SEARCHLIGHT_BEAM: String = "res://shaders/searchlight_beam.gdshader"
 const SHADER_VOLUMETRIC_BEAM_CONE: String = "res://shaders/volumetric_beam_cone.gdshader"
 const PIER_AMBIENT_OGG_PATH: String = "res://assets/audio/rain_ocean_loop.ogg"
@@ -59,6 +60,7 @@ var _scene_poi_sea_fort: PackedScene
 var _scene_poi_leviathan: PackedScene
 var _scene_poi_lightship: PackedScene
 var _scene_rusted_buoy: PackedScene
+var _scene_harbor_lighthouse: PackedScene
 var _mesh_foam_ring: TorusMesh
 
 var poi_hotspots: Array[Dictionary] = []
@@ -201,7 +203,7 @@ func _process(delta: float) -> void:
 			if b_light != null:
 				var l_phase: float = _flicker_time * 2.4 + float(b_idx) * 1.7
 				var pulse: float = 0.5 + 0.5 * sin(l_phase) + 0.18 * sin(l_phase * 3.7)
-				b_light.light_energy = 1.6 + clampf(pulse, 0.0, 1.2) * 1.35
+				b_light.light_energy = 0.88 + clampf(pulse, 0.0, 1.2) * 0.74
 
 	# Sputtering electrical bulkhead lights on Sunken Shipwrecks
 	for sw_idx: int in range(_shipwreck_bulkhead_lights.size()):
@@ -560,6 +562,7 @@ func _load_models() -> void:
 	_scene_poi_leviathan = load(MODEL_POI_LEVIATHAN) as PackedScene
 	_scene_poi_lightship = load(MODEL_POI_LIGHTSHIP) as PackedScene
 	_scene_rusted_buoy = load(MODEL_RUSTED_BUOY) as PackedScene
+	_scene_harbor_lighthouse = load(MODEL_HARBOR_LIGHTHOUSE) as PackedScene
 
 
 func _configure_stylized_landmark_hierarchy(
@@ -598,11 +601,11 @@ func _configure_stylized_landmark_hierarchy(
 						# Preserve custom Meshy PBR base color & normal textures + multiply `Col` cavity ink
 						# Enforce matte corroded iron / waterlogged timber finish (no glossy clearcoat, high roughness, low specular/metallic)
 						std_mat.vertex_color_use_as_albedo = true
-						std_mat.albedo_color = Color(0.82, 0.80, 0.78, 1.0)
-						std_mat.metallic = minf(std_mat.metallic, 0.20)
+						std_mat.albedo_color = Color(0.88, 0.86, 0.84, 1.0)
+						std_mat.metallic = minf(std_mat.metallic, 0.10)
 						std_mat.metallic_specular = 0.20
 						std_mat.metallic_texture = null
-						std_mat.roughness = clampf(maxf(std_mat.roughness, 0.88), 0.82, 0.96)
+						std_mat.roughness = clampf(maxf(std_mat.roughness, 0.88), 0.82, 0.95)
 						std_mat.roughness_texture = null
 						std_mat.clearcoat_enabled = false
 						std_mat.rim_enabled = true
@@ -610,8 +613,12 @@ func _configure_stylized_landmark_hierarchy(
 						std_mat.rim_tint = 0.45
 					else:
 						std_mat.vertex_color_use_as_albedo = true
+						std_mat.metallic = minf(std_mat.metallic, 0.10)
+						std_mat.metallic_specular = 0.20
+						std_mat.roughness = clampf(maxf(std_mat.roughness, 0.88), 0.82, 0.95)
+						std_mat.clearcoat_enabled = false
 						std_mat.rim_enabled = true
-						std_mat.rim = 0.52
+						std_mat.rim = 0.35
 						std_mat.rim_tint = 0.35
 					mesh_inst.set_surface_override_material(s_idx, std_mat)
 
@@ -665,6 +672,15 @@ func _build_wharf_port() -> void:
 			wharf_root.add_child(wharf_scene_inst)
 			_configure_glb_hierarchy(wharf_scene_inst, 3500.0, 150.0, _wharf_surface_materials)
 
+	# Standardized 22.0m Harbor Lighthouse (`harbor_lighthouse.glb`) on the wharf summit at (0.0, 10.5, 44.0)
+	if _scene_harbor_lighthouse != null:
+		var lh_inst: Node3D = _scene_harbor_lighthouse.instantiate() as Node3D
+		if lh_inst != null:
+			lh_inst.name = "HarborLighthouseModel"
+			lh_inst.position = Vector3(0.0, 10.5, 44.0)
+			wharf_root.add_child(lh_inst)
+			_configure_stylized_landmark_hierarchy(lh_inst, 3500.0, 150.0)
+
 	# Shoreline surge foam around the wharf island base
 	if _mesh_foam_ring != null:
 		var island_foam: MeshInstance3D = MeshInstance3D.new()
@@ -717,10 +733,10 @@ func _build_wharf_port() -> void:
 		spill_light.omni_range = 16.0
 		wharf_root.add_child(spill_light)
 
-	# Long-Range Rotating Lighthouse Beacon at (0.0, 33.6, 44.0)
+	# Long-Range Rotating Lighthouse Beacon at (0.0, 28.1, 44.0) aligned with the 22.0m HarborLighthouse lantern room
 	_lighthouse_rotor = Node3D.new()
 	_lighthouse_rotor.name = "LighthouseRotor"
-	_lighthouse_rotor.position = Vector3(0.0, 33.6, 44.0)
+	_lighthouse_rotor.position = Vector3(0.0, 28.1, 44.0)
 	wharf_root.add_child(_lighthouse_rotor)
 
 	var core_glow: OmniLight3D = OmniLight3D.new()
@@ -1022,8 +1038,8 @@ func _populate_ocean_world() -> void:
 	_derelict_lightship_beacons.clear()
 
 	var poi_spawn_coords: Array[Vector2] = [
-		Vector2(-32.0, -52.0),
-		Vector2(34.0, -58.0),
+		Vector2(-38.0, -68.0),
+		Vector2(42.0, -78.0),
 		Vector2(-68.0, -96.0),
 		Vector2(64.0, -108.0),
 		Vector2(-185.0, -240.0),
@@ -1082,12 +1098,12 @@ func _spawn_channel_warning_buoys(wharf_root: Node3D) -> void:
 	_warning_buoy_base_positions.clear()
 
 	var channel_buoy_coords: Array[Vector2] = [
-		Vector2(-10.5, -12.0),
-		Vector2(10.5, -14.0),
-		Vector2(-14.5, -32.0),
-		Vector2(14.5, -36.0),
-		Vector2(-19.5, -60.0),
-		Vector2(19.5, -65.0),
+		Vector2(-14.0, -32.0),
+		Vector2(14.0, -34.0),
+		Vector2(-14.5, -75.0),
+		Vector2(14.5, -77.0),
+		Vector2(-15.0, -120.0),
+		Vector2(15.0, -122.0),
 	]
 
 	for b_idx: int in range(channel_buoy_coords.size()):
@@ -1106,26 +1122,26 @@ func _spawn_channel_warning_buoys(wharf_root: Node3D) -> void:
 
 		var beacon_light: OmniLight3D = OmniLight3D.new()
 		beacon_light.name = "WarningBuoyLight_%02d" % b_idx
-		beacon_light.position = Vector3(0.0, 3.72, 0.0)
+		beacon_light.position = Vector3(0.0, 2.45, 0.0)
 		beacon_light.light_color = Color(1.0, 0.22, 0.14, 1.0)
-		beacon_light.light_energy = 2.4
+		beacon_light.light_energy = 1.32
 		beacon_light.omni_range = 14.0
-		beacon_light.omni_attenuation = 1.05
-		beacon_light.light_specular = 2.4
-		beacon_light.light_volumetric_fog_energy = 1.2
+		beacon_light.omni_attenuation = 1.15
+		beacon_light.light_specular = 1.35
+		beacon_light.light_volumetric_fog_energy = 0.65
 		buoy_inst.add_child(beacon_light)
 
 		var water_pool_spot: SpotLight3D = SpotLight3D.new()
 		water_pool_spot.name = "BuoyWaterPoolSpot_%02d" % b_idx
-		water_pool_spot.position = Vector3(0.0, 3.55, 0.0)
+		water_pool_spot.position = Vector3(0.0, 2.30, 0.0)
 		water_pool_spot.rotation_degrees = Vector3(-75.0, 0.0, 0.0)
 		water_pool_spot.light_color = Color(1.0, 0.22, 0.14, 1.0)
-		water_pool_spot.light_energy = 1.6
+		water_pool_spot.light_energy = 0.88
 		water_pool_spot.spot_range = 8.5
 		water_pool_spot.spot_angle = 42.0
-		water_pool_spot.spot_attenuation = 1.0
-		water_pool_spot.light_specular = 2.2
-		water_pool_spot.light_volumetric_fog_energy = 0.8
+		water_pool_spot.spot_attenuation = 1.1
+		water_pool_spot.light_specular = 1.2
+		water_pool_spot.light_volumetric_fog_energy = 0.45
 		buoy_inst.add_child(water_pool_spot)
 
 		_warning_buoys.append(buoy_inst)
@@ -1170,10 +1186,11 @@ func _spawn_nautical_poi_hotspot(
 		return
 
 	inst.name = node_name
-	var base_y: float = 0.0 if poi_type == "derelict_lightship" else -1.2
+	var base_y: float = -1.85 if poi_type == "shipwreck" else 0.0
+	var list_roll_rad: float = deg_to_rad(14.0) if poi_type == "shipwreck" else 0.0
 	var base_pos: Vector3 = Vector3(pos_xz.x, base_y, pos_xz.y)
 	inst.position = base_pos
-	inst.rotation = Vector3(0.0, yaw_rad, 0.0)
+	inst.rotation = Vector3(0.0, yaw_rad, list_roll_rad)
 	inst.scale = Vector3(scale_val, scale_val, scale_val)
 	parent_node.add_child(inst)
 
@@ -1189,7 +1206,7 @@ func _spawn_nautical_poi_hotspot(
 
 		var bulkhead_light: OmniLight3D = OmniLight3D.new()
 		bulkhead_light.name = node_name + "_BulkheadLight"
-		bulkhead_light.position = Vector3(1.1, 5.55, 2.2)
+		bulkhead_light.position = Vector3(1.1, 4.35, 2.2)
 		bulkhead_light.light_color = Color(1.0, 0.58, 0.24, 1.0)
 		bulkhead_light.light_energy = 2.8
 		bulkhead_light.omni_range = 18.0
@@ -1201,7 +1218,7 @@ func _spawn_nautical_poi_hotspot(
 
 		var bow_hold_light: OmniLight3D = OmniLight3D.new()
 		bow_hold_light.name = node_name + "_BowHoldLight"
-		bow_hold_light.position = Vector3(-0.6, 4.8, -3.8)
+		bow_hold_light.position = Vector3(-0.6, 3.6, -3.8)
 		bow_hold_light.light_color = Color(1.0, 0.54, 0.20, 1.0)
 		bow_hold_light.light_energy = 2.2
 		bow_hold_light.omni_range = 15.0
@@ -1213,7 +1230,7 @@ func _spawn_nautical_poi_hotspot(
 	elif poi_type == "sea_fort":
 		var lantern_light: OmniLight3D = OmniLight3D.new()
 		lantern_light.name = node_name + "_WatchtowerLantern"
-		var l_pos: Vector3 = Vector3(2.8, 10.85, 0.8)
+		var l_pos: Vector3 = Vector3(-2.3, 11.2, 0.0)
 		lantern_light.position = l_pos
 		lantern_light.light_color = Color(1.0, 0.68, 0.30, 1.0)
 		lantern_light.light_energy = 2.5
@@ -1227,7 +1244,7 @@ func _spawn_nautical_poi_hotspot(
 	elif poi_type == "leviathan_ribcage":
 		var bio_light: OmniLight3D = OmniLight3D.new()
 		bio_light.name = node_name + "_BioMistGlow"
-		bio_light.position = Vector3(0.0, 2.05, 0.0)
+		bio_light.position = Vector3(0.0, 2.45, 0.0)
 		bio_light.light_color = Color(0.14, 0.86, 0.72, 1.0)
 		bio_light.light_energy = 1.2
 		bio_light.omni_range = 15.0
@@ -1239,7 +1256,7 @@ func _spawn_nautical_poi_hotspot(
 	else:
 		var mast_beacon: OmniLight3D = OmniLight3D.new()
 		mast_beacon.name = node_name + "_MastBeacon"
-		mast_beacon.position = Vector3(0.0, 9.25, -0.5)
+		mast_beacon.position = Vector3(0.0, 6.85, 0.40)
 		mast_beacon.light_color = Color(0.95, 0.74, 0.34, 1.0)
 		mast_beacon.light_energy = 2.4
 		mast_beacon.omni_range = 18.0
@@ -1252,7 +1269,7 @@ func _spawn_nautical_poi_hotspot(
 		_derelict_lightship_base_yaws.append(yaw_rad)
 		_derelict_lightship_beacons.append(mast_beacon)
 
-	if _mesh_foam_ring != null and poi_type != "derelict_lightship":
+	if _mesh_foam_ring != null and poi_type != "derelict_lightship" and poi_type != "shipwreck":
 		var foam_inst: MeshInstance3D = MeshInstance3D.new()
 		foam_inst.name = node_name + "_Foam"
 		foam_inst.mesh = _mesh_foam_ring
@@ -1286,7 +1303,7 @@ func _enforce_matte_shipwreck_materials(node: Node) -> void:
 					var bmat: BaseMaterial3D = (mat as BaseMaterial3D).duplicate() as BaseMaterial3D
 					bmat.roughness = clampf(maxf(bmat.roughness, 0.88), 0.82, 0.96)
 					bmat.roughness_texture = null
-					bmat.metallic = minf(bmat.metallic, 0.20)
+					bmat.metallic = minf(bmat.metallic, 0.10)
 					bmat.metallic_specular = 0.20
 					bmat.metallic_texture = null
 					bmat.clearcoat_enabled = false
@@ -1348,7 +1365,7 @@ func spawn_custom_shipwreck_ahead(boat_node: Node3D, distance: float = 40.0) -> 
 		fwd_dir = fwd_dir.normalized()
 
 	var spawn_pos: Vector3 = boat_node.global_position + fwd_dir * distance
-	spawn_pos.y = -1.2
+	spawn_pos.y = -1.85
 	# Orient the wreck slightly broadside (38 deg relative to the boat's sightline) so the raised bow,
 	# tilted wheelhouse, masts, and Meshy hull textures are dramatically silhouetted in the searchlight
 	var boat_yaw: float = boat_node.global_rotation.y
@@ -1360,7 +1377,7 @@ func spawn_custom_shipwreck_ahead(boat_node: Node3D, distance: float = 40.0) -> 
 
 	if _preview_shipwreck_node != null and is_instance_valid(_preview_shipwreck_node):
 		_preview_shipwreck_node.global_position = spawn_pos
-		_preview_shipwreck_node.rotation = Vector3(0.0, wreck_yaw, 0.0)
+		_preview_shipwreck_node.rotation = Vector3(0.0, wreck_yaw, deg_to_rad(14.0))
 		var eff_s: float = _shipwreck_scale_multiplier
 		_preview_shipwreck_node.scale = Vector3(eff_s, eff_s, eff_s)
 		var preview_foam: MeshInstance3D = poi_root.get_node_or_null("PreviewCustomShipwreck_Foam") as MeshInstance3D

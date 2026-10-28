@@ -24,7 +24,7 @@ enum FishingState {
 	STATE_LANDING,
 }
 
-const SEA_ROD_GLB_PATH: String = "res://assets/models/sea_fishing_rod.glb"
+const SEA_ROD_GLB_PATH: String = "res://assets/models/fishing_rod_tackle.glb"
 const SEA_BOBBER_GLB_PATH: String = "res://assets/models/sea_bobber_lure.glb"
 const CATCH_COD_GLB_PATH: String = "res://assets/models/fish/fish_cod.glb"
 
@@ -860,7 +860,7 @@ func _update_rod_viewmodel_articulation(delta: float) -> void:
 	if _rod_root == null or not _rod_root.visible:
 		return
 
-	var base_pitch: float = deg_to_rad(14.0)
+	var base_pitch: float = deg_to_rad(18.0)
 	var base_yaw: float = deg_to_rad(-8.0)
 	var bend_down: float = 0.0
 	var bend_side: float = 0.0
@@ -946,7 +946,7 @@ func _update_3d_fishing_line() -> void:
 		var frac: float = float(i) / float(segments)
 		var pt: Vector3 = tip_world.lerp(end_world, frac)
 		pt.y -= sin(frac * PI) * sag_max
-		_append_line_ribbon_segment(prev_pt, pt, 0.0045)
+		_append_line_ribbon_segment(prev_pt, pt, 0.0065)
 		prev_pt = pt
 
 	# In WAITING_BITE, also draw the underwater leader descending from the bobber toward hook_depth_m
@@ -1102,9 +1102,14 @@ func _configure_stylized_viewmodel_materials(root_node: Node) -> void:
 				var base_mat: Material = m_inst.get_active_material(s_idx)
 				if base_mat is StandardMaterial3D:
 					var std_mat: StandardMaterial3D = (base_mat as StandardMaterial3D).duplicate() as StandardMaterial3D
+					if not std_mat.emission_enabled:
+						std_mat.roughness = clampf(maxf(std_mat.roughness, 0.85), 0.82, 0.95)
+						std_mat.metallic = minf(std_mat.metallic, 0.20)
+						std_mat.metallic_specular = 0.20
+						std_mat.clearcoat_enabled = false
 					std_mat.vertex_color_use_as_albedo = true
 					std_mat.rim_enabled = true
-					std_mat.rim = 0.65
+					std_mat.rim = 0.35
 					std_mat.rim_tint = 0.35
 					m_inst.set_surface_override_material(s_idx, std_mat)
 	for child: Node in root_node.get_children():
@@ -1150,6 +1155,7 @@ func _setup_fp_rod_viewmodel(anchor: Node3D) -> void:
 
 	_rod_root = rod_scene.instantiate() as Node3D
 	_rod_root.name = "SeaFishingRodViewmodel"
+	_rod_root.scale = Vector3.ONE * 0.75
 	_rod_root.visible = (state != FishingState.IDLE)
 	_configure_stylized_viewmodel_materials(_rod_root)
 	anchor.add_child(_rod_root)
@@ -1159,7 +1165,9 @@ func _setup_fp_rod_viewmodel(anchor: Node3D) -> void:
 	_rod_mid_lower = _rod_root.find_child("RodMidLower", true, false) as Node3D
 	_rod_mid_upper = _rod_root.find_child("RodMidUpper", true, false) as Node3D
 	_rod_tip = _rod_root.find_child("RodTip", true, false) as Node3D
-	_rod_tip_eyelet = _rod_root.find_child("RodTipEyelet", true, false) as Node3D
+	_rod_tip_eyelet = _rod_root.find_child("RodTipMarker", true, false) as Node3D
+	if _rod_tip_eyelet == null:
+		_rod_tip_eyelet = _rod_root.find_child("RodTipEyelet", true, false) as Node3D
 
 	# Subtle warm fill light on the first-person rod & brass reel
 	_rod_work_light = OmniLight3D.new()

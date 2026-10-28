@@ -10,7 +10,7 @@ extends CharacterBody3D
 @export var rudder_response: float = 1.8
 
 @export_group("Wave & Buoyancy Visuals")
-@export var base_waterline_offset: float = -0.04
+@export var base_waterline_offset: float = 0.24
 @export var wave_rocking_intensity: float = 1.0
 @export var bow_planing_lift: float = 0.06
 @export var wave_tracking_speed: float = 18.0
@@ -29,7 +29,7 @@ extends CharacterBody3D
 @export var throttle_pitch_factor: float = 0.008
 @export var turn_roll_factor: float = 0.22
 @export var visual_smoothing: float = 8.0
-@export var boat_hull_half_size: Vector3 = Vector3(1.85, 2.2, 5.2)
+@export var boat_hull_half_size: Vector3 = Vector3(1.82, 2.2, 5.15)
 @export var debug_show_wave_probes: bool = false
 
 static var shared_wave_speed: float = 1.25
@@ -90,12 +90,14 @@ var _crimson_vignette_alpha: float = 0.0
 var _stealth_hud_layer: CanvasLayer = null
 var _stealth_badge_panel: PanelContainer = null
 var _stealth_badge_label: Label = null
+var _peaceful_badge_label: Label = null
 var _hull_pips_boxes: Array[ColorRect] = []
 var _hull_status_label: Label = null
 var _crimson_vignette_rect: ColorRect = null
 var _ram_impact_player: AudioStreamPlayer3D = null
 var _searchlight_toggle_player: AudioStreamPlayer3D = null
 var _lamp_lens_override_mat: StandardMaterial3D = null
+var _threat_director: RoamingThreatDirector = null
 
 
 func _ready() -> void:
@@ -146,6 +148,38 @@ func _ready() -> void:
 	_build_stealth_and_hull_hud()
 	_resolve_ocean_material()
 	_sync_hull_exclusion_mask_to_ocean()
+	call_deferred("_resolve_threat_director")
+
+
+func _resolve_threat_director() -> void:
+	if _threat_director == null:
+		var parent_node: Node = get_parent()
+		if parent_node != null:
+			_threat_director = parent_node.get_node_or_null("RoamingThreatDirector") as RoamingThreatDirector
+		if _threat_director == null and is_inside_tree():
+			var nodes: Array[Node] = get_tree().get_nodes_in_group("roaming_threat_director")
+			if not nodes.is_empty():
+				_threat_director = nodes[0] as RoamingThreatDirector
+	if _threat_director != null:
+		if not _threat_director.debug_ignore_player_changed.is_connected(_on_debug_ignore_player_changed):
+			_threat_director.debug_ignore_player_changed.connect(_on_debug_ignore_player_changed)
+	_refresh_stealth_and_hull_hud()
+
+
+func _on_debug_ignore_player_changed(_enabled: bool) -> void:
+	_refresh_stealth_and_hull_hud()
+
+
+func toggle_peaceful_mode() -> void:
+	_resolve_threat_director()
+	if _threat_director != null:
+		_threat_director.toggle_debug_ignore_player()
+	else:
+		RoamingThreatDirector.shared_ignore_player = not RoamingThreatDirector.shared_ignore_player
+	if _searchlight_toggle_player != null and DisplayServer.get_name() != "headless":
+		_searchlight_toggle_player.pitch_scale = 1.18 if RoamingThreatDirector.shared_ignore_player else 0.78
+		_searchlight_toggle_player.play()
+	_refresh_stealth_and_hull_hud()
 
 
 func _process(_delta: float) -> void:
@@ -212,7 +246,7 @@ func set_debug_wave_probes_visible(enabled: bool) -> void:
 
 func _configure_boat_volumetric_lights() -> void:
 	if bow_searchlight != null:
-		bow_searchlight.position = Vector3(0.0, 0.25, -1.65)
+		bow_searchlight.position = Vector3(0.0, 0.08, -0.18)
 		bow_searchlight.rotation_degrees = Vector3(-4.5, 0.0, 0.0)
 		bow_searchlight.light_color = Color(1.0, 0.86, 0.62, 1.0)
 		bow_searchlight.light_energy = 26.0
@@ -233,7 +267,7 @@ func _configure_boat_volumetric_lights() -> void:
 		bow_flood_spill.spot_angle_attenuation = 2.8
 		bow_flood_spill.light_volumetric_fog_energy = 0.05
 	if water_surface_illuminator != null:
-		water_surface_illuminator.position = Vector3(0.0, 2.2, -14.0)
+		water_surface_illuminator.position = Vector3(0.0, 2.2, -12.5)
 		water_surface_illuminator.rotation_degrees = Vector3(-7.5, 0.0, 0.0)
 		water_surface_illuminator.light_color = Color(0.98, 0.88, 0.68, 1.0)
 		water_surface_illuminator.light_volumetric_fog_energy = 0.0
@@ -493,7 +527,7 @@ func _configure_trawler_materials(root_node: Node) -> void:
 		var mesh_inst: MeshInstance3D = node as MeshInstance3D
 		if mesh_inst == null or mesh_inst.mesh == null:
 			continue
-		if mesh_inst.name == "LampHousing" or mesh_inst.name == "LensGlass" or mesh_inst.name == "VolumetricBeamCone":
+		if mesh_inst.name == "LampHousing" or mesh_inst.name == "LensGlass" or mesh_inst.name == "VolumetricBeamCone" or mesh_inst.name == "BowSearchlightCone":
 			continue
 		var surface_count: int = mesh_inst.mesh.get_surface_count()
 		for surf_idx: int in range(surface_count):
@@ -509,6 +543,14 @@ func _configure_trawler_materials(root_node: Node) -> void:
 				glow_mat.emission = Color(1.0, 0.65, 0.22, 1.0)
 				glow_mat.emission_energy_multiplier = 3.5
 				mesh_inst.set_surface_override_material(surf_idx, glow_mat)
+			else:
+				var matte_mat: StandardMaterial3D = std_mat.duplicate() as StandardMaterial3D
+				matte_mat.roughness = clampf(maxf(std_mat.roughness, 0.88), 0.82, 0.95)
+				matte_mat.metallic = minf(std_mat.metallic, 0.20)
+				matte_mat.metallic_specular = 0.20
+				matte_mat.clearcoat_enabled = false
+				matte_mat.vertex_color_use_as_albedo = true
+				mesh_inst.set_surface_override_material(surf_idx, matte_mat)
 
 
 func _exit_tree() -> void:
@@ -933,6 +975,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			var code: Key = key_event.physical_keycode if key_event.physical_keycode != KEY_NONE else key_event.keycode
 			if code == KEY_L:
 				set_searchlight_active(not _searchlight_active)
+			elif code == KEY_P or (code == KEY_F9 and not key_event.shift_pressed):
+				toggle_peaceful_mode()
 
 
 func set_searchlight_active(active: bool) -> void:
@@ -968,6 +1012,8 @@ func repair_hull_full() -> void:
 
 
 func apply_enemy_ram_impulse(hit_dir: Vector3, severity: float) -> void:
+	if RoamingThreatDirector.shared_ignore_player:
+		return
 	var clamped_sev: float = clampf(severity, 0.35, 2.5)
 	var planar_dir: Vector3 = Vector3(hit_dir.x, 0.0, hit_dir.z)
 	if planar_dir.length_squared() < 0.0001:
@@ -1036,8 +1082,8 @@ func _build_stealth_and_hull_hud() -> void:
 	_stealth_badge_panel.anchor_right = 0.0
 	_stealth_badge_panel.anchor_bottom = 1.0
 	_stealth_badge_panel.offset_left = 24.0
-	_stealth_badge_panel.offset_top = -112.0
-	_stealth_badge_panel.offset_right = 438.0
+	_stealth_badge_panel.offset_top = -140.0
+	_stealth_badge_panel.offset_right = 456.0
 	_stealth_badge_panel.offset_bottom = -24.0
 
 	var sb: StyleBoxFlat = StyleBoxFlat.new()
@@ -1091,6 +1137,11 @@ func _build_stealth_and_hull_hud() -> void:
 	_hull_status_label.add_theme_font_size_override("font_size", 12)
 	hull_hbox.add_child(_hull_status_label)
 
+	_peaceful_badge_label = Label.new()
+	_peaceful_badge_label.name = "PeacefulModeStatusLabel"
+	_peaceful_badge_label.add_theme_font_size_override("font_size", 12)
+	vbox.add_child(_peaceful_badge_label)
+
 	_refresh_stealth_and_hull_hud()
 
 
@@ -1102,6 +1153,17 @@ func _refresh_stealth_and_hull_hud() -> void:
 		else:
 			_stealth_badge_label.text = "STEALTH: RUNNING DARK [L] — Low Visibility"
 			_stealth_badge_label.add_theme_color_override("font_color", Color(0.28, 0.84, 0.72, 1.0))
+
+	if _peaceful_badge_label != null:
+		var is_peaceful: bool = RoamingThreatDirector.shared_ignore_player
+		if _threat_director != null:
+			is_peaceful = _threat_director.is_debug_ignore_player()
+		if is_peaceful:
+			_peaceful_badge_label.text = "[F9] Peaceful Mode: ON"
+			_peaceful_badge_label.add_theme_color_override("font_color", Color(0.28, 0.92, 0.56, 1.0))
+		else:
+			_peaceful_badge_label.text = "[F9] Peaceful Mode: OFF"
+			_peaceful_badge_label.add_theme_color_override("font_color", Color(0.86, 0.36, 0.34, 0.92))
 
 	for i: int in range(_hull_pips_boxes.size()):
 		var pip: ColorRect = _hull_pips_boxes[i]

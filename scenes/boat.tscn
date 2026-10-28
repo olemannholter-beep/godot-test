@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://cgc8y4r7t0ma" path="res://scripts/boat_controller.gd" id="1_boat_script"]
 [ext_resource type="Shader" uid="uid://u755mq5tbh4w" path="res://shaders/wake_foam.gdshader" id="2_wake_shader"]
-[ext_resource type="PackedScene" uid="uid://cyqcfb0lhuama" path="res://assets/models/trawler.glb" id="3_trawler_glb"]
+[ext_resource type="PackedScene" path="res://assets/models/boat.glb" id="3_trawler_glb"]
 [ext_resource type="Shader" path="res://shaders/volumetric_beam_cone.gdshader" id="4_beam_shader"]
 [ext_resource type="Script" uid="uid://cmb68qe1d0i6s" path="res://scripts/fishing_controller.gd" id="5_fishing_script"]
 
@@ -226,10 +226,11 @@ shape = SubResource("BoxShape3D_collision")
 [node name="TrawlerModel" parent="Visuals" unique_id=1799857941 instance=ExtResource("3_trawler_glb")]
 
 [node name="SearchlightGimbal" type="Node3D" parent="Visuals" unique_id=1000416246]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.85, -0.75)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.42, -2.25)
 
 [node name="LampHousing" type="MeshInstance3D" parent="Visuals/SearchlightGimbal" unique_id=1272680466]
 transform = Transform3D(1, 0, 0, 0, 0.078459, -0.996917, 0, 0.996917, 0.078459, 0, 0, 0)
+visible = false
 cast_shadow = 0
 mesh = SubResource("CylinderMesh_lamp_housing")
 
@@ -250,7 +251,7 @@ cast_shadow = 0
 mesh = SubResource("CylinderMesh_beam_cone")
 
 [node name="BowSearchlight" type="SpotLight3D" parent="Visuals/SearchlightGimbal" unique_id=1965764228]
-transform = Transform3D(1, 0, 0, 0, 0.996917, 0.078459, 0, -0.078459, 0.996917, 0, 0.25, -1.65)
+transform = Transform3D(1, 0, 0, 0, 0.996917, 0.078459, 0, -0.078459, 0.996917, 0, 0.08, -0.18)
 light_color = Color(1, 0.86, 0.62, 1)
 light_energy = 26.0
 light_volumetric_fog_energy = 2.4
@@ -272,7 +273,7 @@ spot_angle = 48.0
 spot_angle_attenuation = 2.8
 
 [node name="WaterSurfaceIlluminator" type="SpotLight3D" parent="Visuals/SearchlightGimbal" unique_id=1153964687]
-transform = Transform3D(1, 0, 0, 0, 0.991445, 0.130526, 0, -0.130526, 0.991445, 0, 2.2, -14)
+transform = Transform3D(1, 0, 0, 0, 0.991445, 0.130526, 0, -0.130526, 0.991445, 0, 2.2, -12.5)
 light_color = Color(0.98, 0.88, 0.68, 1)
 light_energy = 34.0
 light_volumetric_fog_energy = 0.0
@@ -283,7 +284,7 @@ spot_angle = 36.0
 spot_angle_attenuation = 2.4
 
 [node name="CabinLantern" type="OmniLight3D" parent="Visuals" unique_id=2027882253]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.56, 0.08)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.72, -0.05)
 light_color = Color(1, 0.68, 0.32, 1)
 light_energy = 3.5
 light_volumetric_fog_energy = 0.9
@@ -292,7 +293,7 @@ omni_range = 15.0
 omni_attenuation = 0.85
 
 [node name="CabinWarmSpillLight" type="OmniLight3D" parent="Visuals"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.85, -0.15)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.68, -0.85)
 light_color = Color(1, 0.62, 0.25, 1)
 light_energy = 2.8
 light_volumetric_fog_energy = 0.8
@@ -301,7 +302,7 @@ omni_range = 6.5
 omni_attenuation = 1.0
 
 [node name="WheelhouseInteriorLight" type="OmniLight3D" parent="Visuals" unique_id=2049833037]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.85, -0.15)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.68, -0.85)
 light_color = Color(0.95, 0.62, 0.28, 1)
 light_energy = 1.6
 light_volumetric_fog_energy = 0.15
@@ -317,7 +318,7 @@ omni_range = 14.0
 omni_attenuation = 0.95
 
 [node name="WaterlineGlow" type="OmniLight3D" parent="Visuals" unique_id=592194813]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, -0.65)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, -1.15)
 light_color = Color(1, 0.68, 0.28, 1)
 light_energy = 1.4
 light_volumetric_fog_energy = 0.35
@@ -325,7 +326,7 @@ omni_range = 4.5
 omni_attenuation = 1.3
 
 [node name="MastheadLight" type="OmniLight3D" parent="Visuals" unique_id=1133299191]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.35, -0.32)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.38, -0.89)
 light_color = Color(1, 0.72, 0.35, 1)
 light_energy = 3.2
 light_volumetric_fog_energy = 1.4
@@ -333,7 +334,7 @@ omni_range = 14.0
 omni_attenuation = 0.85
 
 [node name="ExhaustSmoke" type="GPUParticles3D" parent="Visuals" unique_id=1117691084]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.32, 2.08, 0.28)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.18, -0.42)
 amount = 36
 lifetime = 2.6
 randomness = 0.25
