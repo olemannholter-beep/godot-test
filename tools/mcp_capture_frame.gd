@@ -154,6 +154,12 @@ func _get_named_view_png_path(mode: String) -> String:
 			return "res://.mcp_captures/godot_enemies_aggro.png"
 		"harbor_overview", "lighthouse":
 			return "res://.mcp_captures/godot_harbor_overview.png"
+		"fjord_gate":
+			return "res://.mcp_captures/verify_fjord_gate_teleport.png"
+		"terraced_hamlet":
+			return "res://.mcp_captures/verify_terraced_hamlet_teleport.png"
+		"stilt_sanctuary":
+			return "res://.mcp_captures/verify_stilt_sanctuary_teleport.png"
 		_:
 			return "res://.mcp_captures/godot_helm.png"
 
@@ -360,6 +366,38 @@ func _apply_view_preset(mode: String, delta: float) -> void:
 				cam.fishing_camera_active = false
 				cam.focus_point = Vector3(0.0, 15.0, 42.0)
 				cam.global_position = Vector3(24.0, 26.0, 2.0)
+				cam.look_at(cam.focus_point, Vector3.UP)
+
+		"fjord_gate", "terraced_hamlet", "stilt_sanctuary":
+			if not _preset_applied:
+				_preset_applied = true
+				if harbor_ui != null:
+					harbor_ui._set_modal_open(false)
+				if fishing_ctrl != null:
+					fishing_ctrl._exit_to_navigation_helm()
+				if boat is BoatController:
+					var bc_tp: BoatController = boat as BoatController
+					if mode == "fjord_gate":
+						bc_tp.teleport_to_landmark(2)
+					elif mode == "terraced_hamlet":
+						bc_tp.teleport_to_landmark(3)
+					else:
+						bc_tp.teleport_to_landmark(4)
+			if cam != null and boat != null:
+				cam.fishing_camera_active = false
+				cam.target_yaw = boat.rotation.y
+				cam.current_yaw = boat.rotation.y
+				cam.target_pitch = deg_to_rad(-16.0)
+				cam.current_pitch = cam.target_pitch
+				cam.target_distance = 22.0
+				cam.current_distance = cam.target_distance
+				var fwd_tp: Vector3 = -boat.global_transform.basis.z
+				fwd_tp.y = 0.0
+				if fwd_tp.length_squared() > 0.001:
+					fwd_tp = fwd_tp.normalized()
+				cam.focus_point = boat.global_position + fwd_tp * 14.0 + Vector3(0.0, 3.8, 0.0)
+				var tp_offset: Vector3 = Basis.from_euler(Vector3(cam.current_pitch, cam.current_yaw, 0.0)) * Vector3(0.0, 0.0, cam.current_distance)
+				cam.global_position = cam.focus_point + tp_offset
 				cam.look_at(cam.focus_point, Vector3.UP)
 
 		_:

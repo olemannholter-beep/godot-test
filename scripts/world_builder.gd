@@ -15,6 +15,19 @@ const MODEL_POI_LEVIATHAN: String = "res://assets/models/poi_leviathan_ribcage.g
 const MODEL_POI_LIGHTSHIP: String = "res://assets/models/poi_derelict_lightship.glb"
 const MODEL_RUSTED_BUOY: String = "res://assets/models/rusted_warning_buoy.glb"
 const MODEL_HARBOR_LIGHTHOUSE: String = "res://assets/models/harbor_lighthouse.glb"
+
+const MODEL_LANDMARK_FJORD_GATE_ARCH: String = "res://assets/meshes/landmark_fjord_gate_arch.glb"
+const MODEL_FJORD_CLIFF_WALL_SHACK: String = "res://assets/meshes/fjord_cliff_wall_shack.glb"
+const MODEL_FJORD_CLIFF_WALL_BASALT: String = "res://assets/meshes/fjord_cliff_wall_basalt.glb"
+const MODEL_FJORD_CLIFF_WALL_OVERHANG: String = "res://assets/meshes/fjord_cliff_wall_overhang.glb"
+const MODEL_FJORD_CLIFF_CORNER_SPIRE: String = "res://assets/meshes/fjord_cliff_corner_spire.glb"
+const MODEL_LANDMARK_TERRACED_HAMLET: String = "res://assets/meshes/landmark_terraced_hamlet_island.glb"
+const MODEL_LANDMARK_STILT_SANCTUARY: String = "res://assets/meshes/landmark_stilt_sanctuary_cluster.glb"
+
+const FJORD_GATE_ARCH_POS: Vector3 = Vector3(0.0, -1.45, -520.0)
+const TERRACED_HAMLET_POS: Vector3 = Vector3(0.0, -1.45, -960.0)
+const STILT_SANCTUARY_POS: Vector3 = Vector3(380.0, -1.45, -180.0)
+
 const SHADER_SEARCHLIGHT_BEAM: String = "res://shaders/searchlight_beam.gdshader"
 const SHADER_VOLUMETRIC_BEAM_CONE: String = "res://shaders/volumetric_beam_cone.gdshader"
 const PIER_AMBIENT_OGG_PATH: String = "res://assets/audio/rain_ocean_loop.ogg"
@@ -61,6 +74,13 @@ var _scene_poi_leviathan: PackedScene
 var _scene_poi_lightship: PackedScene
 var _scene_rusted_buoy: PackedScene
 var _scene_harbor_lighthouse: PackedScene
+var _scene_landmark_fjord_gate_arch: PackedScene
+var _scene_fjord_cliff_wall_shack: PackedScene
+var _scene_fjord_cliff_wall_basalt: PackedScene
+var _scene_fjord_cliff_wall_overhang: PackedScene
+var _scene_fjord_cliff_corner_spire: PackedScene
+var _scene_landmark_terraced_hamlet: PackedScene
+var _scene_landmark_stilt_sanctuary: PackedScene
 var _mesh_foam_ring: TorusMesh
 
 var poi_hotspots: Array[Dictionary] = []
@@ -94,6 +114,7 @@ func _ready() -> void:
 	_setup_ocean_horizon()
 	_configure_horizon_fog_darkness()
 	_build_wharf_port()
+	_build_fjord_corridor_and_landmarks()
 	_populate_ocean_world()
 	call_deferred("_configure_horizon_fog_darkness")
 
@@ -158,6 +179,27 @@ func _configure_horizon_fog_darkness() -> void:
 		env.volumetric_fog_albedo = Color(0.06, 0.09, 0.12, 1.0)
 		env.volumetric_fog_emission = Color(0.001, 0.002, 0.003, 1.0)
 		env.volumetric_fog_emission_energy = 0.03
+		env.volumetric_fog_gi_inject = 1.25
+		env.volumetric_fog_anisotropy = 0.68
+		env.sdfgi_enabled = true
+		env.sdfgi_use_occlusion = true
+		env.sdfgi_read_sky_light = true
+		env.sdfgi_bounce_feedback = 0.85
+		env.sdfgi_cascades = 6
+		env.sdfgi_min_cell_size = 0.4
+		env.sdfgi_y_scale = Environment.SDFGI_Y_SCALE_75_PERCENT
+		env.ssil_enabled = true
+		env.ssil_radius = 6.0
+		env.ssil_intensity = 1.35
+		env.ssao_enabled = true
+		env.ssao_radius = 1.5
+		env.ssao_intensity = 2.2
+		env.ssr_enabled = true
+		env.ssr_max_steps = 64
+		env.ssr_fade_in = 0.15
+		env.ssr_fade_out = 2.0
+		env.tonemap_mode = Environment.TONE_MAPPER_ACES
+		env.tonemap_exposure = 1.05
 	var moon: DirectionalLight3D = parent_node.get_node_or_null("DirectionalLight3D") as DirectionalLight3D
 	if moon != null:
 		moon.light_energy = 0.14
@@ -549,6 +591,20 @@ void light() {
 		_mat_lighthouse_beam.set_shader_parameter("proximity_fade_distance", 1.5)
 
 
+func _load_landmark_scene(mesh_path: String) -> PackedScene:
+	if ResourceLoader.exists(mesh_path):
+		var loaded: PackedScene = load(mesh_path) as PackedScene
+		if loaded != null:
+			return loaded
+	var alt_path: String = mesh_path.replace("res://assets/meshes/", "res://assets/models/")
+	if ResourceLoader.exists(alt_path):
+		var alt_loaded: PackedScene = load(alt_path) as PackedScene
+		if alt_loaded != null:
+			return alt_loaded
+	push_error("[WorldBuilder] Missing landmark mesh resource: %s" % mesh_path)
+	return null
+
+
 func _load_models() -> void:
 	_scene_wharf_island = load(MODEL_WHARF_ISLAND) as PackedScene
 	_scene_island_large = load(MODEL_ISLAND_LARGE) as PackedScene
@@ -563,6 +619,14 @@ func _load_models() -> void:
 	_scene_poi_lightship = load(MODEL_POI_LIGHTSHIP) as PackedScene
 	_scene_rusted_buoy = load(MODEL_RUSTED_BUOY) as PackedScene
 	_scene_harbor_lighthouse = load(MODEL_HARBOR_LIGHTHOUSE) as PackedScene
+
+	_scene_landmark_fjord_gate_arch = _load_landmark_scene(MODEL_LANDMARK_FJORD_GATE_ARCH)
+	_scene_fjord_cliff_wall_shack = _load_landmark_scene(MODEL_FJORD_CLIFF_WALL_SHACK)
+	_scene_fjord_cliff_wall_basalt = _load_landmark_scene(MODEL_FJORD_CLIFF_WALL_BASALT)
+	_scene_fjord_cliff_wall_overhang = _load_landmark_scene(MODEL_FJORD_CLIFF_WALL_OVERHANG)
+	_scene_fjord_cliff_corner_spire = _load_landmark_scene(MODEL_FJORD_CLIFF_CORNER_SPIRE)
+	_scene_landmark_terraced_hamlet = _load_landmark_scene(MODEL_LANDMARK_TERRACED_HAMLET)
+	_scene_landmark_stilt_sanctuary = _load_landmark_scene(MODEL_LANDMARK_STILT_SANCTUARY)
 
 
 func _configure_stylized_landmark_hierarchy(
@@ -775,6 +839,8 @@ func _build_wharf_port() -> void:
 		spot.spot_angle = 14.0
 		spot.spot_angle_attenuation = 0.8
 		spot.spot_attenuation = 0.8
+		spot.shadow_enabled = true
+		spot.shadow_blur = 1.5
 		spot.add_to_group("lighthouse_beams")
 		_lighthouse_rotor.add_child(spot)
 
@@ -890,6 +956,481 @@ func _on_pier_audio_finished() -> void:
 		_pier_audio_player.play()
 
 
+func _is_in_fjord_or_landmark_clearance(pos_xz: Vector2) -> bool:
+	# Leave the first 220m radius around the Starting Harbor open and uncluttered
+	if pos_xz.length() < 220.0:
+		return true
+	# Keep the Northern Fjord Approach & Extended Canyon Corridor (-140m >= Z >= -1080m, |X| <= 135m) clear of random rocks/islands
+	if absf(pos_xz.x) <= 135.0 and pos_xz.y <= -140.0 and pos_xz.y >= -1080.0:
+		return true
+	# Keep the Stilt-Sanctuary Spires zone at (380, -180) clear
+	if pos_xz.distance_to(Vector2(STILT_SANCTUARY_POS.x, STILT_SANCTUARY_POS.z)) <= 115.0:
+		return true
+	# Keep the 4 Navigable Barrier Island Chains clear of overlapping procedural rocks
+	if pos_xz.distance_to(Vector2(-410.0, -90.0)) <= 135.0:
+		return true
+	if absf(pos_xz.x) <= 185.0 and absf(pos_xz.y - 360.0) <= 85.0:
+		return true
+	if pos_xz.distance_to(Vector2(460.0, 20.0)) <= 130.0:
+		return true
+	if pos_xz.distance_to(Vector2(-390.0, 290.0)) <= 125.0:
+		return true
+	return false
+
+
+func _add_landmark_beacon_light(
+	parent_node: Node3D,
+	light_name: String,
+	local_pos: Vector3,
+	color: Color = Color(1.0, 0.64, 0.24, 1.0),
+	energy: float = 5.0,
+	range_m: float = 120.0,
+	fog_energy: float = 2.0,
+	spawn_orb: bool = false
+) -> OmniLight3D:
+	var omni: OmniLight3D = OmniLight3D.new()
+	omni.name = light_name
+	omni.position = local_pos
+	omni.light_color = color
+	omni.light_energy = energy
+	omni.omni_range = range_m
+	omni.omni_attenuation = 0.95
+	omni.light_specular = 1.6
+	omni.light_volumetric_fog_energy = fog_energy
+	parent_node.add_child(omni)
+
+	if spawn_orb:
+		var orb_inst: MeshInstance3D = MeshInstance3D.new()
+		orb_inst.name = light_name + "_EmissiveOrb"
+		orb_inst.position = local_pos
+		orb_inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var sph: SphereMesh = SphereMesh.new()
+		sph.radius = 0.14
+		sph.height = 0.28
+		sph.radial_segments = 12
+		sph.rings = 6
+		if _mat_amber_glass != null:
+			sph.material = _mat_amber_glass
+		orb_inst.mesh = sph
+		orb_inst.visibility_range_end = 3500.0
+		parent_node.add_child(orb_inst)
+	return omni
+
+
+func _spawn_fjord_landmark_piece(
+	parent_node: Node3D,
+	scene_res: PackedScene,
+	node_name: String,
+	pos: Vector3,
+	yaw_deg: float,
+	scale_vec: Vector3 = Vector3.ONE
+) -> Node3D:
+	if scene_res == null:
+		push_error("[WorldBuilder] Cannot spawn '%s': PackedScene is null!" % node_name)
+		return null
+	var inst: Node3D = scene_res.instantiate() as Node3D
+	if inst == null:
+		push_error("[WorldBuilder] Failed to instantiate '%s'!" % node_name)
+		return null
+	inst.name = node_name
+	inst.position = pos
+	inst.rotation_degrees = Vector3(0.0, yaw_deg, 0.0)
+	inst.scale = scale_vec
+	parent_node.add_child(inst)
+	_configure_stylized_landmark_hierarchy(inst, 3500.0, 150.0)
+	return inst
+
+
+func _build_fjord_corridor_and_landmarks() -> void:
+	var fjord_root: Node3D = Node3D.new()
+	fjord_root.name = "NordicFjordAndLandmarks"
+	fjord_root.position = Vector3.ZERO
+	add_child(fjord_root)
+
+	# 1. [2] Fjord Entrance Gate Arch (`landmark_fjord_gate_arch.glb`) at Z = -520m
+	var gate_arch: Node3D = _spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_landmark_fjord_gate_arch,
+		"LandmarkFjordGateArch",
+		FJORD_GATE_ARCH_POS,
+		0.0,
+		Vector3(1.15, 1.15, 1.15)
+	)
+	if gate_arch != null:
+		_add_landmark_beacon_light(gate_arch, "GateArchCenterLantern", Vector3(0.0, 16.2, 1.5), Color(1.0, 0.62, 0.22, 1.0), 5.8, 130.0, 2.4)
+		_add_landmark_beacon_light(gate_arch, "GateArchPortLantern", Vector3(-16.0, 9.5, 6.0), Color(1.0, 0.66, 0.26, 1.0), 5.0, 120.0, 2.0)
+		_add_landmark_beacon_light(gate_arch, "GateArchStarboardLantern", Vector3(16.0, 9.5, 6.0), Color(1.0, 0.66, 0.26, 1.0), 5.0, 120.0, 2.0)
+		LightingUtils.create_area_or_omni_light(
+			gate_arch,
+			"GateArchCeilingAreaLight",
+			Vector3(0.0, 16.5, 0.0),
+			Vector3(-90.0, 0.0, 0.0),
+			Vector2(16.0, 6.0),
+			Color(1.0, 0.64, 0.24, 1.0),
+			6.5,
+			80.0,
+			true,
+			1.5,
+			2.2,
+			450.0
+		)
+
+	# 2. The Black Sound Fjord Walls — 12 overlapping cliff segments from Z = -555m to Z = -890m
+	# (6 on Port X = -68..-72, 6 on Starboard X = +68..+72, with staggered Cliff Shacks at West Z = -630m & East Z = -810m)
+
+	# Segment Pair 1 (Z = -555m): Fjord Mouth Corner Spires
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_corner_spire,
+		"FjordCliffCornerSpire_Port",
+		Vector3(-68.0, -1.45, -555.0),
+		25.0,
+		Vector3(1.12, 1.15, 1.12)
+	)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_corner_spire,
+		"FjordCliffCornerSpire_Starboard",
+		Vector3(68.0, -1.45, -555.0),
+		-155.0,
+		Vector3(1.12, 1.15, 1.12)
+	)
+
+	# Segment Pair 2 (Z = -625m / -622m): West Cliff Shack (near Z = -630m) + East Basalt Cliff
+	var shack_port: Node3D = _spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_shack,
+		"FjordCliffWallShack_Port",
+		Vector3(-70.0, -1.45, -626.0),
+		0.0,
+		Vector3(1.12, 1.12, 1.12)
+	)
+	if shack_port != null:
+		_add_landmark_beacon_light(shack_port, "CliffShackLantern_Port", Vector3(28.0, 14.0, 0.0), Color(1.0, 0.64, 0.24, 1.0), 5.0, 115.0, 2.0)
+		LightingUtils.create_area_or_omni_light(
+			shack_port,
+			"CliffShackPortAreaLight",
+			Vector3(28.0, 14.0, 0.0),
+			Vector3(0.0, 90.0, 0.0),
+			Vector2(4.5, 2.5),
+			Color(1.0, 0.64, 0.24, 1.0),
+			4.8,
+			48.0,
+			false,
+			1.0,
+			1.8,
+			380.0
+		)
+
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_basalt,
+		"FjordCliffWallBasalt_Starboard_A",
+		Vector3(71.0, -1.45, -622.0),
+		180.0,
+		Vector3(1.14, 1.15, 1.14)
+	)
+
+	# Segment Pair 3 (Z = -688m): West Basalt Cliff + East Overhang Cliff
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_basalt,
+		"FjordCliffWallBasalt_Port_A",
+		Vector3(-72.0, -1.45, -688.0),
+		0.0,
+		Vector3(1.14, 1.15, 1.14)
+	)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_overhang,
+		"FjordCliffWallOverhang_Starboard_A",
+		Vector3(70.0, -1.45, -688.0),
+		180.0,
+		Vector3(1.14, 1.15, 1.14)
+	)
+
+	# Segment Pair 4 (Z = -752m): West Overhang Cliff + East Basalt Cliff
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_overhang,
+		"FjordCliffWallOverhang_Port_A",
+		Vector3(-70.0, -1.45, -752.0),
+		0.0,
+		Vector3(1.14, 1.15, 1.14)
+	)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_basalt,
+		"FjordCliffWallBasalt_Starboard_B",
+		Vector3(72.0, -1.45, -752.0),
+		180.0,
+		Vector3(1.14, 1.15, 1.14)
+	)
+
+	# Segment Pair 5 (Z = -818m / -812m): West Basalt Cliff + East Cliff Shack (near Z = -810m)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_basalt,
+		"FjordCliffWallBasalt_Port_B",
+		Vector3(-71.0, -1.45, -818.0),
+		0.0,
+		Vector3(1.14, 1.15, 1.14)
+	)
+	var shack_stbd: Node3D = _spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_shack,
+		"FjordCliffWallShack_Starboard",
+		Vector3(70.0, -1.45, -812.0),
+		180.0,
+		Vector3(1.12, 1.12, 1.12)
+	)
+	if shack_stbd != null:
+		_add_landmark_beacon_light(shack_stbd, "CliffShackLantern_Starboard", Vector3(28.0, 14.0, 0.0), Color(1.0, 0.64, 0.24, 1.0), 5.0, 115.0, 2.0)
+		LightingUtils.create_area_or_omni_light(
+			shack_stbd,
+			"CliffShackStbdAreaLight",
+			Vector3(28.0, 14.0, 0.0),
+			Vector3(0.0, 90.0, 0.0),
+			Vector2(4.5, 2.5),
+			Color(1.0, 0.64, 0.24, 1.0),
+			4.8,
+			48.0,
+			false,
+			1.0,
+			1.8,
+			380.0
+		)
+
+	# Segment Pair 6 (Z = -885m): Northern Basin Narrows Overhang Cliffs
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_overhang,
+		"FjordCliffWallOverhang_Port_B",
+		Vector3(-68.0, -1.45, -885.0),
+		0.0,
+		Vector3(1.12, 1.15, 1.12)
+	)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_overhang,
+		"FjordCliffWallOverhang_Starboard_B",
+		Vector3(68.0, -1.45, -885.0),
+		180.0,
+		Vector3(1.12, 1.15, 1.12)
+	)
+
+	# 3. [3] Terraced Fishing Hamlet Island (`landmark_terraced_hamlet_island.glb`) at Z = -960m inside the Fjord Basin
+	var terraced_hamlet: Node3D = _spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_landmark_terraced_hamlet,
+		"LandmarkTerracedHamletIsland",
+		TERRACED_HAMLET_POS,
+		-90.0,
+		Vector3(1.15, 1.15, 1.15)
+	)
+	if terraced_hamlet != null:
+		_add_landmark_beacon_light(terraced_hamlet, "HamletDockBeacon_Center", Vector3(24.0, 8.5, 0.0), Color(1.0, 0.68, 0.28, 1.0), 5.2, 120.0, 2.0)
+		_add_landmark_beacon_light(terraced_hamlet, "HamletTierBeacon_West", Vector3(16.0, 18.0, -14.0), Color(1.0, 0.62, 0.24, 1.0), 4.8, 115.0, 1.8)
+		_add_landmark_beacon_light(terraced_hamlet, "HamletTierBeacon_East", Vector3(16.0, 19.5, 14.0), Color(1.0, 0.62, 0.24, 1.0), 4.8, 115.0, 1.8)
+		_add_landmark_beacon_light(terraced_hamlet, "HamletSummitBeacon", Vector3(4.0, 32.0, 0.0), Color(1.0, 0.74, 0.34, 1.0), 5.5, 135.0, 2.2)
+
+		# 3 Rectangular Warm-Amber AreaLight3D Emitters casting wide reflections across the fjord basin
+		LightingUtils.create_area_or_omni_light(
+			terraced_hamlet,
+			"HamletPierAreaLight",
+			Vector3(24.0, 8.5, 0.0),
+			Vector3(-18.0, 90.0, 0.0),
+			Vector2(8.0, 4.0),
+			Color(1.0, 0.68, 0.28, 1.0),
+			5.5,
+			65.0,
+			true,
+			1.5,
+			2.0,
+			450.0
+		)
+		LightingUtils.create_area_or_omni_light(
+			terraced_hamlet,
+			"HamletWestTierAreaLight",
+			Vector3(16.0, 18.0, -14.0),
+			Vector3(-12.0, 65.0, 0.0),
+			Vector2(8.0, 4.0),
+			Color(1.0, 0.62, 0.24, 1.0),
+			4.8,
+			55.0,
+			false,
+			1.0,
+			1.6,
+			450.0
+		)
+		LightingUtils.create_area_or_omni_light(
+			terraced_hamlet,
+			"HamletEastTierAreaLight",
+			Vector3(16.0, 19.5, 14.0),
+			Vector3(-12.0, 115.0, 0.0),
+			Vector2(8.0, 4.0),
+			Color(1.0, 0.62, 0.24, 1.0),
+			4.8,
+			55.0,
+			false,
+			1.0,
+			1.6,
+			450.0
+		)
+
+	# 4. [4] Stilt-Sanctuary Spires Cluster (`landmark_stilt_sanctuary_cluster.glb`) at (380, -1.45, -180)
+	var stilt_sanctuary: Node3D = _spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_landmark_stilt_sanctuary,
+		"LandmarkStiltSanctuaryCluster",
+		STILT_SANCTUARY_POS,
+		-60.0,
+		Vector3(1.12, 1.12, 1.12)
+	)
+	if stilt_sanctuary != null:
+		_add_landmark_beacon_light(stilt_sanctuary, "SanctuaryBeacon_Main", Vector3(0.0, 18.0, 10.0), Color(1.0, 0.66, 0.26, 1.0), 5.0, 120.0, 2.2)
+		_add_landmark_beacon_light(stilt_sanctuary, "SanctuaryBeacon_WestSpire", Vector3(-14.0, 24.0, 4.0), Color(1.0, 0.62, 0.22, 1.0), 5.0, 120.0, 2.0)
+		_add_landmark_beacon_light(stilt_sanctuary, "SanctuaryBeacon_EastSpire", Vector3(14.0, 22.0, 4.0), Color(1.0, 0.62, 0.22, 1.0), 5.0, 120.0, 2.0)
+		_add_landmark_beacon_light(stilt_sanctuary, "SanctuaryDockBeacon", Vector3(0.0, 6.5, 16.0), Color(1.0, 0.70, 0.30, 1.0), 5.0, 120.0, 1.8)
+		LightingUtils.create_area_or_omni_light(
+			stilt_sanctuary,
+			"SanctuaryMainCabinAreaLight",
+			Vector3(0.0, 18.0, 10.0),
+			Vector3(-15.0, 0.0, 0.0),
+			Vector2(5.0, 3.0),
+			Color(1.0, 0.66, 0.26, 1.0),
+			5.2,
+			50.0,
+			false,
+			1.0,
+			1.8,
+			400.0
+		)
+
+	# 5. Construct 4 Navigable Barrier Island Chains in the 4 Expansion Zones
+	_build_expansion_barrier_chains(fjord_root)
+
+
+func _build_expansion_barrier_chains(fjord_root: Node3D) -> void:
+	# Zone #1: Western Barrier Peninsula (centered near X = -410, Z = -90, running NNW-SSE)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_basalt,
+		"WestBarrier_North_Basalt",
+		Vector3(-432.0, -1.45, -148.0),
+		20.0,
+		Vector3(1.18, 1.15, 1.18)
+	)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_overhang,
+		"WestBarrier_Mid_Overhang",
+		Vector3(-410.0, -1.45, -90.0),
+		16.0,
+		Vector3(1.20, 1.18, 1.20)
+	)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_corner_spire,
+		"WestBarrier_South_Spire",
+		Vector3(-388.0, -1.45, -34.0),
+		35.0,
+		Vector3(1.18, 1.20, 1.18)
+	)
+
+	# Zone #2: Southern Breakwater Ridge (centered near X = 0, Z = 360, with 75m navigable center pass & lantern beacon)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_basalt,
+		"SouthBreakwater_WestOuter_Basalt",
+		Vector3(-124.0, -1.45, 348.0),
+		-82.0,
+		Vector3(1.18, 1.15, 1.18)
+	)
+	var sb_west_spire: Node3D = _spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_corner_spire,
+		"SouthBreakwater_WestPass_Spire",
+		Vector3(-64.0, -1.45, 360.0),
+		-45.0,
+		Vector3(1.15, 1.20, 1.15)
+	)
+	if sb_west_spire != null:
+		_add_landmark_beacon_light(sb_west_spire, "SouthPassBeacon_West", Vector3(14.0, 12.0, -10.0), Color(1.0, 0.64, 0.24, 1.0), 5.2, 125.0, 2.1)
+
+	var sb_east_spire: Node3D = _spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_corner_spire,
+		"SouthBreakwater_EastPass_Spire",
+		Vector3(64.0, -1.45, 360.0),
+		135.0,
+		Vector3(1.15, 1.20, 1.15)
+	)
+	if sb_east_spire != null:
+		_add_landmark_beacon_light(sb_east_spire, "SouthPassBeacon_East", Vector3(-14.0, 12.0, -10.0), Color(1.0, 0.64, 0.24, 1.0), 5.2, 125.0, 2.1)
+
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_overhang,
+		"SouthBreakwater_EastOuter_Overhang",
+		Vector3(124.0, -1.45, 348.0),
+		82.0,
+		Vector3(1.18, 1.15, 1.18)
+	)
+
+	# Zone #3: Eastern Sea-Stack Ridge (centered near X = 460, Z = 20, south of Stilt-Sanctuary)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_corner_spire,
+		"EastRidge_North_Spire",
+		Vector3(448.0, -1.45, -38.0),
+		-145.0,
+		Vector3(1.16, 1.20, 1.16)
+	)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_basalt,
+		"EastRidge_Mid_Basalt",
+		Vector3(462.0, -1.45, 20.0),
+		-168.0,
+		Vector3(1.20, 1.16, 1.20)
+	)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_overhang,
+		"EastRidge_South_Overhang",
+		Vector3(445.0, -1.45, 80.0),
+		-155.0,
+		Vector3(1.18, 1.15, 1.18)
+	)
+
+	# Zone #4: Southwest Caldera Reef (centered near X = -390, Z = 290, crescent enclosing a sheltered fishing cove)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_overhang,
+		"SWCaldera_West_Overhang",
+		Vector3(-436.0, -1.45, 275.0),
+		32.0,
+		Vector3(1.16, 1.15, 1.16)
+	)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_corner_spire,
+		"SWCaldera_South_Spire",
+		Vector3(-390.0, -1.45, 326.0),
+		88.0,
+		Vector3(1.18, 1.22, 1.18)
+	)
+	_spawn_fjord_landmark_piece(
+		fjord_root,
+		_scene_fjord_cliff_wall_overhang,
+		"SWCaldera_East_Overhang",
+		Vector3(-344.0, -1.45, 282.0),
+		145.0,
+		Vector3(1.16, 1.15, 1.16)
+	)
+
+
 func _populate_ocean_world() -> void:
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = random_seed
@@ -929,6 +1470,8 @@ func _populate_ocean_world() -> void:
 
 			if pos_xz.length() < safe_zone_radius + 75.0:
 				pos_xz = pos_xz.normalized() * (safe_zone_radius + 135.0)
+			if _is_in_fjord_or_landmark_clearance(pos_xz):
+				continue
 
 			var roll_type: float = rng.randf()
 			var chosen_scene: PackedScene = _scene_island_medium
@@ -984,6 +1527,8 @@ func _populate_ocean_world() -> void:
 
 			if rock_xz.length() < safe_zone_radius + 15.0:
 				continue
+			if _is_in_fjord_or_landmark_clearance(rock_xz):
+				continue
 			if absf(rock_xz.x) > world_half_extent or absf(rock_xz.y) > world_half_extent:
 				continue
 
@@ -1014,6 +1559,8 @@ func _populate_ocean_world() -> void:
 
 			if rock_xz.length() < safe_zone_radius + 18.0:
 				rock_xz = rock_xz.normalized() * (safe_zone_radius + rng.randf_range(28.0, 85.0))
+			if _is_in_fjord_or_landmark_clearance(rock_xz):
+				continue
 
 			_spawn_random_jagged_rock(rocks_root, rng, rock_xz, spawned_rocks)
 			spawned_rocks += 1
@@ -1038,15 +1585,15 @@ func _populate_ocean_world() -> void:
 	_derelict_lightship_beacons.clear()
 
 	var poi_spawn_coords: Array[Vector2] = [
-		Vector2(-38.0, -68.0),
-		Vector2(42.0, -78.0),
-		Vector2(-68.0, -96.0),
-		Vector2(64.0, -108.0),
-		Vector2(-185.0, -240.0),
-		Vector2(220.0, -290.0),
-		Vector2(-340.0, -120.0),
-		Vector2(380.0, -140.0),
-		Vector2(-420.0, 180.0),
+		Vector2(-260.0, -210.0),
+		Vector2(210.0, -360.0),
+		Vector2(-420.0, 140.0),
+		Vector2(140.0, 310.0),
+		Vector2(-480.0, -380.0),
+		Vector2(280.0, -260.0),
+		Vector2(-310.0, -110.0),
+		Vector2(540.0, -320.0),
+		Vector2(-580.0, 60.0),
 		Vector2(460.0, 240.0),
 		Vector2(-680.0, -620.0),
 		Vector2(740.0, -580.0),
@@ -1100,10 +1647,10 @@ func _spawn_channel_warning_buoys(wharf_root: Node3D) -> void:
 	var channel_buoy_coords: Array[Vector2] = [
 		Vector2(-14.0, -32.0),
 		Vector2(14.0, -34.0),
-		Vector2(-14.5, -75.0),
-		Vector2(14.5, -77.0),
-		Vector2(-15.0, -120.0),
-		Vector2(15.0, -122.0),
+		Vector2(-14.5, -84.0),
+		Vector2(14.5, -86.0),
+		Vector2(-15.0, -138.0),
+		Vector2(15.0, -140.0),
 	]
 
 	for b_idx: int in range(channel_buoy_coords.size()):

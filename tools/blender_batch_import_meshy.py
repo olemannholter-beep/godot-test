@@ -1159,7 +1159,167 @@ def process_fishing_rod_tackle() -> None:
 	shutil.copy2(out_rod, os.path.join(MESHES_DIR, "fishing_rod_tackle.glb"))
 
 
+# ==============================================================================
+# 11. NORDIC FJORD & LANDMARK MESHES (7 Pro Models -> `res://assets/meshes/*.glb`)
+# ==============================================================================
+def _process_single_fjord_landmark(
+	raw_filename: str,
+	asset_stem: str,
+	obj_name: str,
+	target_span_x: float,
+	target_height_z: float,
+	waterline_frac: float = 0.06,
+	align_widest_to_x: bool = True,
+	extra_rot_z_deg: float = 0.0,
+	is_pilings: bool = False,
+	seed: int = 1101,
+) -> None:
+	obj = import_and_join_raw_glb(raw_filename, obj_name, target_verts=42000)
+	mesh = obj.data
+	mn, mx, sp = get_bounds(mesh)
+
+	# Align widest horizontal axis to X (or Y if requested) before applying extra_rot_z_deg
+	if align_widest_to_x and sp.y > sp.x:
+		mesh.transform(Matrix.Rotation(math.radians(90.0), 4, "Z"))
+	elif (not align_widest_to_x) and sp.x > sp.y:
+		mesh.transform(Matrix.Rotation(math.radians(90.0), 4, "Z"))
+
+	if abs(extra_rot_z_deg) > 0.01:
+		mesh.transform(Matrix.Rotation(math.radians(extra_rot_z_deg), 4, "Z"))
+	mesh.update()
+
+	mn, mx, sp = get_bounds(mesh)
+	horiz_max = max(sp.x, sp.y, 0.001)
+	scale_xy = target_span_x / horiz_max
+	scale_z = target_height_z / max(sp.z, 0.001)
+
+	cx = 0.5 * (mn.x + mx.x)
+	cy = 0.5 * (mn.y + mx.y)
+	wl_z = mn.z + sp.z * waterline_frac
+
+	T = Matrix.Translation(Vector((-cx, -cy, -wl_z)))
+	S = Matrix.Diagonal(Vector((scale_xy, scale_xy, scale_z, 1.0)))
+	mesh.transform(S @ T)
+	mesh.update()
+
+	mn, mx, sp = get_bounds(mesh)
+	add_underwater_foundation_skirt(
+		obj,
+		bottom_z=-8.50,
+		top_overlap_z=1.10,
+		radius_x=sp.x * 0.44,
+		radius_y=sp.y * 0.44,
+		flare_bottom=1.24,
+		is_pilings=is_pilings,
+		seed=seed,
+	)
+
+	mn, mx, sp = get_bounds(mesh)
+	print(
+		f"[{asset_stem}.glb] Final Bounds (Blender): X=[{mn.x:.2f},{mx.x:.2f}] ({sp.x:.2f}m), "
+		f"Y=[{mn.y:.2f},{mx.y:.2f}] ({sp.y:.2f}m), Z=[{mn.z:.2f},{mx.z:.2f}] ({sp.z:.2f}m)"
+	)
+
+	apply_universal_matte_dredge_material(
+		obj,
+		f"Matte_{obj_name}",
+		darken_factor=0.78,
+		submerged_darken_z=0.0,
+	)
+	render_4view_contact_sheet(asset_stem, [obj])
+
+	os.makedirs(MESHES_DIR, exist_ok=True)
+	out_meshes = os.path.join(MESHES_DIR, f"{asset_stem}.glb")
+	export_glb(out_meshes)
+	shutil.copy2(out_meshes, os.path.join(MODELS_DIR, f"{asset_stem}.glb"))
+
+
+def process_fjord_landmarks() -> None:
+	# 1. Fjord Entrance Gate Arch (`landmark_fjord_gate_arch.glb`)
+	_process_single_fjord_landmark(
+		raw_filename="Meshy_AI_Nordic_Fjord_Rock_Arc_1028204522_image-to-3d-texture.glb",
+		asset_stem="landmark_fjord_gate_arch",
+		obj_name="LandmarkFjordGateArch",
+		target_span_x=78.0,
+		target_height_z=46.0,
+		waterline_frac=0.06,
+		align_widest_to_x=True,
+		seed=1101,
+	)
+	# 2. Fjord Cliff Wall with Shack (`fjord_cliff_wall_shack.glb`)
+	_process_single_fjord_landmark(
+		raw_filename="Meshy_AI_Nordic_Basalt_Cliff_W_1028204529_image-to-3d-texture.glb",
+		asset_stem="fjord_cliff_wall_shack",
+		obj_name="FjordCliffWallShack",
+		target_span_x=64.0,
+		target_height_z=38.0,
+		waterline_frac=0.06,
+		align_widest_to_x=False,
+		seed=1102,
+	)
+	# 3. Fjord Cliff Wall Basalt (`fjord_cliff_wall_basalt.glb`)
+	_process_single_fjord_landmark(
+		raw_filename="Meshy_AI_Nordic_Natural_Basalt_1028204455_image-to-3d-texture.glb",
+		asset_stem="fjord_cliff_wall_basalt",
+		obj_name="FjordCliffWallBasalt",
+		target_span_x=68.0,
+		target_height_z=42.0,
+		waterline_frac=0.06,
+		align_widest_to_x=False,
+		seed=1103,
+	)
+	# 4. Fjord Cliff Wall Overhang (`fjord_cliff_wall_overhang.glb`)
+	_process_single_fjord_landmark(
+		raw_filename="Meshy_AI_Overhanging_Fjord_Cli_1028204504_image-to-3d-texture.glb",
+		asset_stem="fjord_cliff_wall_overhang",
+		obj_name="FjordCliffWallOverhang",
+		target_span_x=64.0,
+		target_height_z=40.0,
+		waterline_frac=0.06,
+		align_widest_to_x=False,
+		seed=1104,
+	)
+	# 5. Fjord Cliff Corner Spire (`fjord_cliff_corner_spire.glb`)
+	_process_single_fjord_landmark(
+		raw_filename="Meshy_AI_Coastal_Cliff_Corner__1028204449_image-to-3d-texture.glb",
+		asset_stem="fjord_cliff_corner_spire",
+		obj_name="FjordCliffCornerSpire",
+		target_span_x=48.0,
+		target_height_z=46.0,
+		waterline_frac=0.06,
+		align_widest_to_x=True,
+		seed=1105,
+	)
+	# 6. Terraced Fishing Hamlet Island (`landmark_terraced_hamlet_island.glb`)
+	_process_single_fjord_landmark(
+		raw_filename="Meshy_AI_Vertical_Fishing_Vill_1028204513_image-to-3d-texture.glb",
+		asset_stem="landmark_terraced_hamlet_island",
+		obj_name="LandmarkTerracedHamletIsland",
+		target_span_x=72.0,
+		target_height_z=48.0,
+		waterline_frac=0.06,
+		align_widest_to_x=True,
+		seed=1106,
+	)
+	# 7. Stilt-Sanctuary Spires Cluster (`landmark_stilt_sanctuary_cluster.glb`)
+	_process_single_fjord_landmark(
+		raw_filename="Meshy_AI_Sea_Stack_Spires_Clus_1028204537_image-to-3d-texture.glb",
+		asset_stem="landmark_stilt_sanctuary_cluster",
+		obj_name="LandmarkStiltSanctuaryCluster",
+		target_span_x=62.0,
+		target_height_z=48.0,
+		waterline_frac=0.06,
+		align_widest_to_x=True,
+		is_pilings=True,
+		seed=1107,
+	)
+
+
 def main() -> None:
+	if "--only-landmarks" in sys.argv:
+		process_fjord_landmarks()
+		print("\n[BatchImport] All 7 Fjord & Landmark models standardized, contact-sheet verified, and exported successfully!")
+		return
 	if "--only-rod" in sys.argv:
 		process_fishing_rod_tackle()
 		print("\n[BatchImport] Fishing rod (fishing_rod_tackle.glb) standardized and exported successfully!")
@@ -1185,7 +1345,8 @@ def main() -> None:
 	process_sea_fort_tower()
 	process_leviathan_ribcage()
 	process_fishing_rod_tackle()
-	print("\n[BatchImport] All 10 Meshy models (12 target GLBs) standardized and exported successfully!")
+	process_fjord_landmarks()
+	print("\n[BatchImport] All Meshy models standardized and exported successfully!")
 
 
 if __name__ == "__main__":

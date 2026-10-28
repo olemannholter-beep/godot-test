@@ -351,16 +351,31 @@ func _create_leviathan_instance(spawn_pos: Vector3, phase_seed: float) -> Dictio
 	for h_i: int in range(32):
 		history_points.append(spawn_pos + Vector3(0.0, 0.0, float(h_i) * 1.8))
 
-	# Eerie moving underwater cyan OmniLight3D & breach splash particles
+	# Eerie moving underwater cyan AreaLight3D spine ribbon & breach splash particles
 	var bio_light: OmniLight3D = OmniLight3D.new()
 	bio_light.name = "LeviathanCyanBioLight"
 	bio_light.position = Vector3(0.0, 2.2, -1.5)
 	bio_light.light_color = COLOR_LEVIATHAN_CYAN
-	bio_light.light_energy = 5.2 * enemy_glow_intensity
-	bio_light.omni_range = 22.0
+	bio_light.light_energy = 2.2 * enemy_glow_intensity
+	bio_light.omni_range = 16.0
 	bio_light.omni_attenuation = 0.85
-	bio_light.light_volumetric_fog_energy = 1.65 * enemy_glow_intensity
+	bio_light.light_volumetric_fog_energy = 1.2 * enemy_glow_intensity
 	head_pivot.add_child(bio_light)
+
+	LightingUtils.create_area_or_omni_light(
+		head_pivot,
+		"LeviathanSpineAreaLight",
+		Vector3(0.0, 1.8, 4.5),
+		Vector3(-90.0, 0.0, 0.0),
+		Vector2(3.5, 14.0),
+		Color(0.15, 0.92, 0.85, 1.0),
+		4.8 * enemy_glow_intensity,
+		28.0,
+		false,
+		1.0,
+		1.8 * enemy_glow_intensity,
+		350.0
+	)
 
 	var head_splash: GPUParticles3D = _create_leviathan_splash_particles()
 	head_splash.position = Vector3(0.0, 0.15, -0.5)

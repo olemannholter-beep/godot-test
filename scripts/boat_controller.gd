@@ -91,6 +91,9 @@ var _stealth_hud_layer: CanvasLayer = null
 var _stealth_badge_panel: PanelContainer = null
 var _stealth_badge_label: Label = null
 var _peaceful_badge_label: Label = null
+var _nav_compass_panel: PanelContainer = null
+var _nav_compass_label: Label = null
+var _nav_hotkeys_label: Label = null
 var _hull_pips_boxes: Array[ColorRect] = []
 var _hull_status_label: Label = null
 var _crimson_vignette_rect: ColorRect = null
@@ -184,6 +187,7 @@ func toggle_peaceful_mode() -> void:
 
 func _process(_delta: float) -> void:
 	_sync_hull_exclusion_mask_to_ocean()
+	_update_nav_compass_hud()
 
 
 func _resolve_ocean_material() -> void:
@@ -256,6 +260,7 @@ func _configure_boat_volumetric_lights() -> void:
 		bow_searchlight.spot_angle_attenuation = 1.35
 		bow_searchlight.light_specular = 2.8
 		bow_searchlight.shadow_enabled = true
+		bow_searchlight.shadow_blur = 1.5
 		bow_searchlight.light_volumetric_fog_energy = 2.4
 	if bow_flood_spill != null:
 		bow_flood_spill.rotation_degrees = Vector3(-6.0, 0.0, 0.0)
@@ -312,6 +317,23 @@ func _configure_boat_volumetric_lights() -> void:
 		var winch_light: Light3D = visuals.get_node_or_null("WinchWorkLight") as Light3D
 		if winch_light != null:
 			winch_light.light_volumetric_fog_energy = 0.35
+
+		var aft_area_light: Light3D = visuals.get_node_or_null("AftDeckAreaWorkLight") as Light3D
+		if aft_area_light == null:
+			LightingUtils.create_area_or_omni_light(
+				visuals,
+				"AftDeckAreaWorkLight",
+				Vector3(0.0, 1.85, 1.35),
+				Vector3(-22.0, 0.0, 0.0),
+				Vector2(1.6, 0.8),
+				Color(1.0, 0.72, 0.38, 1.0),
+				1.4,
+				7.5,
+				false,
+				1.0,
+				0.25,
+				80.0
+			)
 
 
 func _setup_maritime_boat_audio() -> void:
@@ -977,6 +999,107 @@ func _unhandled_input(event: InputEvent) -> void:
 				set_searchlight_active(not _searchlight_active)
 			elif code == KEY_P or (code == KEY_F9 and not key_event.shift_pressed):
 				toggle_peaceful_mode()
+			elif code == KEY_1 or code == KEY_KP_1:
+				teleport_to_landmark(1)
+			elif code == KEY_2 or code == KEY_KP_2:
+				teleport_to_landmark(2)
+			elif code == KEY_3 or code == KEY_KP_3:
+				teleport_to_landmark(3)
+			elif code == KEY_4 or code == KEY_KP_4:
+				teleport_to_landmark(4)
+
+
+func teleport_to_landmark(slot: int) -> void:
+	var dest_xz: Vector2 = Vector2.ZERO
+	var dest_yaw: float = 0.0
+	if slot == 1:
+		# [1] Starting Harbor Dock
+		dest_xz = Vector2(0.0, 0.0)
+		dest_yaw = 0.0
+	elif slot == 2:
+		# [2] 65m South of the Fjord Entrance Gate Arch (at Z = -520.0), facing into Fjord canyon (-Z)
+		dest_xz = Vector2(0.0, -455.0)
+		dest_yaw = 0.0
+	elif slot == 3:
+		# [3] Inside the Fjord Basin 75m South of the Terraced Fishing Hamlet Island (at Z = -960.0)
+		dest_xz = Vector2(0.0, -885.0)
+		dest_yaw = 0.0
+	elif slot == 4:
+		# [4] 75m in front of the Stilt-Sanctuary Spires Cluster (at (380.0, -1.45, -180.0))
+		dest_xz = Vector2(315.0, -145.0)
+		dest_yaw = deg_to_rad(-60.0)
+	else:
+		return
+
+	velocity = Vector3.ZERO
+	current_speed = 0.0
+	current_turn_rate = 0.0
+	heave_vel = 0.0
+	_pitch_vel = 0.0
+	_roll_vel = 0.0
+	_hull_pitch = 0.0
+	_hull_roll = 0.0
+	_buoyancy_initialized = false
+
+	var wave_h: float = get_exact_water_height(dest_xz)
+	var waterline_y: float = wave_h + base_waterline_offset
+	_heave_y = waterline_y
+	global_position = Vector3(dest_xz.x, waterline_y, dest_xz.y)
+	rotation = Vector3(0.0, dest_yaw, 0.0)
+
+	# Snap OverheadCamera immediately behind the boat so there is zero camera sweep lag
+	var parent_node: Node = get_parent()
+	if parent_node != null:
+		var cam: OverheadCamera = parent_node.get_node_or_null("Camera3D") as OverheadCamera
+		if cam != null:
+			cam.target_yaw = dest_yaw
+			cam.current_yaw = dest_yaw
+			var fwd_dir: Vector3 = -global_transform.basis.z
+			fwd_dir.y = 0.0
+			if fwd_dir.length_squared() > 0.001:
+				fwd_dir = fwd_dir.normalized()
+			cam.focus_point = global_position + fwd_dir * cam.forward_look_ahead + Vector3(0.0, cam.target_height_offset, 0.0)
+			var cam_offset: Vector3 = Basis.from_euler(Vector3(cam.current_pitch, cam.current_yaw, 0.0)) * Vector3(0.0, 0.0, cam.current_distance)
+			cam.global_position = cam.focus_point + cam_offset
+			cam.look_at(cam.focus_point, Vector3.UP)
+
+	_update_visual_buoyancy(0.016)
+	_sync_hull_exclusion_mask_to_ocean()
+	_update_nav_compass_hud()
+
+
+func _compass_cardinal_from_vec(dir_xz: Vector2) -> String:
+	if dir_xz.length_squared() < 0.0001:
+		return "N"
+	# In Godot: -Z (dir_xz.y < 0) is North (0 deg), +X (dir_xz.x > 0) is East (90 deg), +Z is South (180 deg), -X is West (270 deg)
+	var bearing_deg: float = fposmod(rad_to_deg(atan2(dir_xz.x, -dir_xz.y)), 360.0)
+	var cardinals: Array[String] = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+	var idx: int = int(round(bearing_deg / 45.0)) % 8
+	return cardinals[idx]
+
+
+func _update_nav_compass_hud() -> void:
+	if _nav_compass_label == null:
+		return
+	var boat_xz: Vector2 = Vector2(global_position.x, global_position.z)
+	var fwd_3d: Vector3 = get_searchlight_forward_dir()
+	var fwd_xz: Vector2 = Vector2(fwd_3d.x, fwd_3d.z)
+	var hdg_deg: int = int(round(fposmod(rad_to_deg(atan2(fwd_xz.x, -fwd_xz.y)), 360.0))) % 360
+	var hdg_card: String = _compass_cardinal_from_vec(fwd_xz)
+
+	var fjord_gate_xz: Vector2 = Vector2(WorldBuilder.FJORD_GATE_ARCH_POS.x, WorldBuilder.FJORD_GATE_ARCH_POS.z)
+	var to_gate: Vector2 = fjord_gate_xz - boat_xz
+	var gate_dist: int = int(round(to_gate.length()))
+	var gate_card: String = _compass_cardinal_from_vec(to_gate)
+
+	_nav_compass_label.text = "POS: (%d, %d)   |   HDG: %03d° %s   |   [2] Fjord Gate: %dm %s" % [
+		int(round(boat_xz.x)),
+		int(round(boat_xz.y)),
+		hdg_deg,
+		hdg_card,
+		gate_dist,
+		gate_card,
+	]
 
 
 func set_searchlight_active(active: bool) -> void:
@@ -1142,7 +1265,41 @@ func _build_stealth_and_hull_hud() -> void:
 	_peaceful_badge_label.add_theme_font_size_override("font_size", 12)
 	vbox.add_child(_peaceful_badge_label)
 
+	# Top-Left Navigation Compass, Coordinates & Instant Landmark Teleport Readout
+	_nav_compass_panel = PanelContainer.new()
+	_nav_compass_panel.name = "NavCompassTeleportPanel"
+	_nav_compass_panel.anchors_preset = Control.PRESET_TOP_LEFT
+	_nav_compass_panel.anchor_left = 0.0
+	_nav_compass_panel.anchor_top = 0.0
+	_nav_compass_panel.anchor_right = 0.0
+	_nav_compass_panel.anchor_bottom = 0.0
+	_nav_compass_panel.offset_left = 24.0
+	_nav_compass_panel.offset_top = 20.0
+	_nav_compass_panel.offset_right = 636.0
+	_nav_compass_panel.offset_bottom = 86.0
+	_nav_compass_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_nav_compass_panel.add_theme_stylebox_override("panel", sb.duplicate())
+	_stealth_hud_layer.add_child(_nav_compass_panel)
+
+	var nav_vbox: VBoxContainer = VBoxContainer.new()
+	nav_vbox.add_theme_constant_override("separation", 4)
+	_nav_compass_panel.add_child(nav_vbox)
+
+	_nav_compass_label = Label.new()
+	_nav_compass_label.name = "NavCompassTelemetryLabel"
+	_nav_compass_label.add_theme_font_size_override("font_size", 13)
+	_nav_compass_label.add_theme_color_override("font_color", Color(0.96, 0.80, 0.42, 1.0))
+	nav_vbox.add_child(_nav_compass_label)
+
+	_nav_hotkeys_label = Label.new()
+	_nav_hotkeys_label.name = "NavTeleportHotkeysLabel"
+	_nav_hotkeys_label.text = "TELEPORT:  [1] Harbor Dock   [2] Fjord Gate   [3] Terraced Hamlet   [4] Stilt Sanctuary"
+	_nav_hotkeys_label.add_theme_font_size_override("font_size", 12)
+	_nav_hotkeys_label.add_theme_color_override("font_color", Color(0.76, 0.84, 0.82, 0.92))
+	nav_vbox.add_child(_nav_hotkeys_label)
+
 	_refresh_stealth_and_hull_hud()
+	_update_nav_compass_hud()
 
 
 func _refresh_stealth_and_hull_hud() -> void:
