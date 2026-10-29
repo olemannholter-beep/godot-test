@@ -24,10 +24,13 @@ const COLOR_LEVIATHAN_EYE_AMBER: Color = Color(0.98, 0.74, 0.18, 1.0)
 @export var safe_harbor_radius: float = 92.0
 @export var initial_ghost_trawler_count: int = 3
 @export var initial_leviathan_count: int = 2
+@export var roaming_threats_enabled: bool = false
 @export var debug_ignore_player: bool = false
 
+signal roaming_threats_enabled_changed(enabled: bool)
 signal debug_ignore_player_changed(enabled: bool)
 
+static var shared_threats_enabled: bool = false
 static var shared_ignore_player: bool = false
 
 var enemy_glow_intensity: float = 1.0
@@ -50,11 +53,104 @@ func _ready() -> void:
 	add_to_group("roaming_threat_director")
 	_resolve_references()
 	_init_shared_resources()
-	_spawn_initial_roaming_threats()
+
+	if _check_cli_threats_enabled():
+		roaming_threats_enabled = true
+	elif _check_cli_threats_disabled():
+		roaming_threats_enabled = false
+
+	shared_threats_enabled = roaming_threats_enabled
+
+	if roaming_threats_enabled:
+		_spawn_initial_roaming_threats()
+		set_process(true)
+		set_physics_process(true)
+	else:
+		clear_all_threat_instances()
+		set_process(false)
+		set_physics_process(false)
+
 	if _check_cli_peaceful_flags() or debug_ignore_player:
 		set_debug_ignore_player(true)
 	else:
 		shared_ignore_player = false
+
+
+func _check_cli_threats_enabled() -> bool:
+	var all_args: PackedStringArray = OS.get_cmdline_args()
+	all_args.append_array(OS.get_cmdline_user_args())
+	for raw_arg: String in all_args:
+		var clean_arg: String = raw_arg.strip_edges().to_lower()
+		if clean_arg == "--with-threats" or clean_arg == "--enable-threats" or clean_arg == "--threats=true":
+			return true
+	return false
+
+
+func _check_cli_threats_disabled() -> bool:
+	var all_args: PackedStringArray = OS.get_cmdline_args()
+	all_args.append_array(OS.get_cmdline_user_args())
+	for raw_arg: String in all_args:
+		var clean_arg: String = raw_arg.strip_edges().to_lower()
+		if clean_arg == "--no-threats" or clean_arg == "--disable-threats" or clean_arg == "--threats=false":
+			return true
+	return false
+
+
+func set_threats_enabled(enabled: bool) -> void:
+	var changed: bool = (roaming_threats_enabled != enabled)
+	roaming_threats_enabled = enabled
+	shared_threats_enabled = enabled
+
+	if roaming_threats_enabled:
+		set_process(true)
+		set_physics_process(true)
+		if _ghost_trawlers.is_empty() and _leviathans.is_empty():
+			_spawn_initial_roaming_threats()
+	else:
+		clear_all_aggro_states()
+		clear_all_threat_instances()
+		set_process(false)
+		set_physics_process(false)
+
+	if changed:
+		roaming_threats_enabled_changed.emit(roaming_threats_enabled)
+
+
+func is_threats_enabled() -> bool:
+	return roaming_threats_enabled
+
+
+func toggle_threats_enabled() -> bool:
+	set_threats_enabled(not roaming_threats_enabled)
+	return roaming_threats_enabled
+
+
+func clear_all_threat_instances() -> void:
+	for trawler: Dictionary in _ghost_trawlers:
+		var root: Node3D = trawler.get("root") as Node3D
+		if is_instance_valid(root):
+			root.queue_free()
+	_ghost_trawlers.clear()
+
+	for lev: Dictionary in _leviathans:
+		var root: Node3D = lev.get("root") as Node3D
+		if is_instance_valid(root):
+			root.queue_free()
+	_leviathans.clear()
+
+	for child: Node in get_children():
+		if child is Node3D and (child.name.begins_with("GhostTrawler") or child.name.begins_with("AbyssalLeviathan")):
+			child.queue_free()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey:
+		var key_event: InputEventKey = event as InputEventKey
+		if key_event.pressed and not key_event.echo:
+			var code: Key = key_event.physical_keycode if key_event.physical_keycode != KEY_NONE else key_event.keycode
+			if code == KEY_F9 and not key_event.shift_pressed:
+				toggle_threats_enabled()
+				get_viewport().set_input_as_handled()
 
 
 func _check_cli_peaceful_flags() -> bool:
@@ -114,6 +210,7 @@ func clear_all_aggro_states() -> void:
 
 
 func _exit_tree() -> void:
+	clear_all_threat_instances()
 	_shared_micro_normal_tex = null
 	_foghorn_wav = null
 	_leviathan_rumble_wav = null
@@ -1173,6 +1270,8 @@ func spawn_ghost_trawler_ahead(distance_m: float = 40.0) -> Node3D:
 	_resolve_references()
 	if boat == null:
 		return null
+	if not roaming_threats_enabled:
+		set_threats_enabled(true)
 	var fwd: Vector3 = boat.get_searchlight_forward_dir()
 	var right: Vector3 = Vector3(-fwd.z, 0.0, fwd.x)
 	var spawn_pos: Vector3 = boat.global_position + fwd * distance_m - right * 3.5
@@ -1203,6 +1302,8 @@ func spawn_leviathan_ahead(distance_m: float = 35.0) -> Node3D:
 	_resolve_references()
 	if boat == null:
 		return null
+	if not roaming_threats_enabled:
+		set_threats_enabled(true)
 	var fwd: Vector3 = boat.get_searchlight_forward_dir()
 	var right: Vector3 = Vector3(-fwd.z, 0.0, fwd.x)
 	var spawn_pos: Vector3 = boat.global_position + fwd * distance_m + right * 5.5

@@ -334,6 +334,7 @@ func _apply_view_preset(mode: String, delta: float) -> void:
 					boat.rotation = Vector3.ZERO
 				var threat_dir: RoamingThreatDirector = _scene_root.get_node_or_null("RoamingThreatDirector") as RoamingThreatDirector
 				if threat_dir != null:
+					threat_dir.set_threats_enabled(true)
 					var tr_node: Node3D = threat_dir.spawn_ghost_trawler_ahead(25.0)
 					var lv_node: Node3D = threat_dir.spawn_leviathan_ahead(24.0)
 					if tr_node != null:

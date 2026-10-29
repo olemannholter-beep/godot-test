@@ -177,10 +177,28 @@ func _resolve_threat_director() -> void:
 	if _threat_director != null:
 		if not _threat_director.debug_ignore_player_changed.is_connected(_on_debug_ignore_player_changed):
 			_threat_director.debug_ignore_player_changed.connect(_on_debug_ignore_player_changed)
+		if not _threat_director.roaming_threats_enabled_changed.is_connected(_on_roaming_threats_enabled_changed):
+			_threat_director.roaming_threats_enabled_changed.connect(_on_roaming_threats_enabled_changed)
 	_refresh_stealth_and_hull_hud()
 
 
 func _on_debug_ignore_player_changed(_enabled: bool) -> void:
+	_refresh_stealth_and_hull_hud()
+
+
+func _on_roaming_threats_enabled_changed(_enabled: bool) -> void:
+	_refresh_stealth_and_hull_hud()
+
+
+func toggle_roaming_threats() -> void:
+	_resolve_threat_director()
+	if _threat_director != null:
+		_threat_director.toggle_threats_enabled()
+	else:
+		RoamingThreatDirector.shared_threats_enabled = not RoamingThreatDirector.shared_threats_enabled
+	if _searchlight_toggle_player != null and DisplayServer.get_name() != "headless":
+		_searchlight_toggle_player.pitch_scale = 1.18 if not RoamingThreatDirector.shared_threats_enabled else 0.78
+		_searchlight_toggle_player.play()
 	_refresh_stealth_and_hull_hud()
 
 
@@ -1035,8 +1053,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			var code: Key = key_event.physical_keycode if key_event.physical_keycode != KEY_NONE else key_event.keycode
 			if code == KEY_L:
 				set_searchlight_active(not _searchlight_active)
-			elif code == KEY_P or (code == KEY_F9 and not key_event.shift_pressed):
+			elif code == KEY_F9 and not key_event.shift_pressed:
+				toggle_roaming_threats()
+				get_viewport().set_input_as_handled()
+			elif code == KEY_P:
 				toggle_peaceful_mode()
+				get_viewport().set_input_as_handled()
 			elif code == KEY_1 or code == KEY_KP_1:
 				teleport_to_landmark(1)
 			elif code == KEY_2 or code == KEY_KP_2:
@@ -1173,7 +1195,9 @@ func repair_hull_full() -> void:
 
 
 func apply_enemy_ram_impulse(hit_dir: Vector3, severity: float) -> void:
-	if RoamingThreatDirector.shared_ignore_player:
+	if not RoamingThreatDirector.shared_threats_enabled or RoamingThreatDirector.shared_ignore_player:
+		return
+	if _threat_director != null and (not _threat_director.is_threats_enabled() or _threat_director.is_debug_ignore_player()):
 		return
 	var clamped_sev: float = clampf(severity, 0.35, 2.5)
 	var planar_dir: Vector3 = Vector3(hit_dir.x, 0.0, hit_dir.z)
@@ -1350,15 +1374,22 @@ func _refresh_stealth_and_hull_hud() -> void:
 			_stealth_badge_label.add_theme_color_override("font_color", Color(0.28, 0.84, 0.72, 1.0))
 
 	if _peaceful_badge_label != null:
-		var is_peaceful: bool = RoamingThreatDirector.shared_ignore_player
+		var threats_active: bool = RoamingThreatDirector.shared_threats_enabled
 		if _threat_director != null:
-			is_peaceful = _threat_director.is_debug_ignore_player()
-		if is_peaceful:
-			_peaceful_badge_label.text = "[F9] Peaceful Mode: ON"
+			threats_active = _threat_director.is_threats_enabled()
+		if not threats_active:
+			_peaceful_badge_label.text = "[F9] Roaming Threats: DISABLED"
 			_peaceful_badge_label.add_theme_color_override("font_color", Color(0.28, 0.92, 0.56, 1.0))
 		else:
-			_peaceful_badge_label.text = "[F9] Peaceful Mode: OFF"
-			_peaceful_badge_label.add_theme_color_override("font_color", Color(0.86, 0.36, 0.34, 0.92))
+			var is_peaceful: bool = RoamingThreatDirector.shared_ignore_player
+			if _threat_director != null:
+				is_peaceful = _threat_director.is_debug_ignore_player()
+			if is_peaceful:
+				_peaceful_badge_label.text = "[F9] Threats: ACTIVE (Peaceful Mode ON [P])"
+				_peaceful_badge_label.add_theme_color_override("font_color", Color(0.35, 0.85, 0.95, 1.0))
+			else:
+				_peaceful_badge_label.text = "[F9] Threats: ACTIVE (Hostile Mode ON [P])"
+				_peaceful_badge_label.add_theme_color_override("font_color", Color(0.95, 0.45, 0.15, 1.0))
 
 	for i: int in range(_hull_pips_boxes.size()):
 		var pip: ColorRect = _hull_pips_boxes[i]

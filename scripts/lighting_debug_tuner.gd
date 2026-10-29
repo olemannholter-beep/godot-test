@@ -679,6 +679,13 @@ func _on_threat_ignore_player_changed(_enabled: bool) -> void:
 func _refresh_peaceful_button_display() -> void:
 	if _peaceful_toggle_btn == null:
 		return
+	var threats_active: bool = RoamingThreatDirector.shared_threats_enabled
+	if threat_director != null:
+		threats_active = threat_director.is_threats_enabled()
+	if not threats_active:
+		_peaceful_toggle_btn.text = "🛡 [F9] Roaming Threats: OFF"
+		_peaceful_toggle_btn.add_theme_color_override("font_color", Color(0.28, 0.92, 0.56, 1.0))
+		return
 	var is_peaceful: bool = RoamingThreatDirector.shared_ignore_player
 	if threat_director != null:
 		is_peaceful = threat_director.is_debug_ignore_player()
