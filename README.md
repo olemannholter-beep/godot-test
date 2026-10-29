@@ -36,6 +36,11 @@ The world map layout is parsed directly from [`scripts/world_builder.gd`](script
   - **SSIL & SSAO**: Screen-Space Indirect Lighting and Screen-Space Ambient Occlusion providing rich bounce into rock alcoves and under timber boardwalks.
 - **Screen-Space Reflections (SSR)**: Dynamic 64-step reflections across realistic wave normals.
 - **Shadowed Volumetric Fog**: Forward-scattering fog god-rays (`anisotropy = 0.68`, `gi_inject = 1.25`) with PCSS soft shadows (`shadow_blur = 1.5`) on searchlights, archways, and lighthouses.
+- **Dynamic 3D Rolling Sea-Smoke Banks**: Sporadic `FogVolume` clusters drifting across Black Sound Fjord and the southern breakwater.
+- **Ocean Water Contact Foam & Screen-Space Reflections**: Dual-pass shader reconstructing depth for shoreline white water while preserving screen-space specular reflections of glowing windows and lanterns.
+- **Camera-Yaw-Aware Lens Droplets & Sea Spray**: Post-process screen shader rendering real-time refractive rain droplets and wind-blown streaks reacting dynamically to boat speed and heading.
+- **Horizon Sheet Lightning**: Procedural dual-pulse lightning illuminating clouds and sky every 22–38s.
+- **Living Landmark Details**: Cottage chimney smoke, circling silhouetted seabird flocks, and swaying pier lanterns.
 - **ACES Filmic Tonemapping**: High dynamic range color preservation without clipping bright lanterns or bioluminescence to flat white.
 
 ---
@@ -49,7 +54,8 @@ The world map layout is parsed directly from [`scripts/world_builder.gd`](script
 | **`L`** | Toggle Bow Searchlight (Blazing vs. Running Dark stealth) |
 | **`F`** | Unlimber Sea Rod (First-Person Fishing) / Stow Rod (Navigation Helm) |
 | **`TAB`** | Open / Close Dredge Ledger & Catch Log |
-| **`F9` / `P`** | Toggle Peaceful Mode (Threats Ignore Player) |
+| **`F9`** | Toggle Roaming Threats (Disabled by default / Enabled) |
+| **`P`** | Toggle Peaceful Mode (Threats ignore player when enabled) |
 | **`[1]`** | Instant Teleport: **Starting Harbor Dock** (`0m, 0m`) |
 | **`[2]`** | Instant Teleport: **Fjord Entrance Gate** (`0m, -455m`, facing `-Z`) |
 | **`[3]`** | Instant Teleport: **Terraced Fishing Hamlet** (`0m, -885m`, facing `-Z`) |
