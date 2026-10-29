@@ -40,10 +40,10 @@ const PIER_AMBIENT_WAV_FALLBACK_PATH: String = "res://assets/audio/rain_ocean_lo
 @export var random_seed: int = 1928
 @export var lighthouse_rotation_speed: float = 0.45
 
-var _mat_tidal_wet: StandardMaterial3D
-var _mat_basalt_cliff: StandardMaterial3D
-var _mat_sharp_obsidian: StandardMaterial3D
-var _mat_mossy_crag: StandardMaterial3D
+var _mat_tidal_wet: Material
+var _mat_basalt_cliff: Material
+var _mat_sharp_obsidian: Material
+var _mat_mossy_crag: Material
 var _mat_weathered_timber: StandardMaterial3D
 var _mat_rotting_wood: StandardMaterial3D
 var _mat_shack_wall: StandardMaterial3D
@@ -55,11 +55,15 @@ var _mat_lighthouse_stone: StandardMaterial3D
 var _mat_lighthouse_band: StandardMaterial3D
 var _mat_beacon_lens: StandardMaterial3D
 
-var _materials_by_name: Dictionary[String, StandardMaterial3D] = {}
-var _rock_surface_materials: Array[StandardMaterial3D] = []
-var _wharf_surface_materials: Array[StandardMaterial3D] = []
+var _materials_by_name: Dictionary[String, Material] = {}
+var _rock_surface_materials: Array[Material] = []
+var _wharf_surface_materials: Array[Material] = []
 var _mat_surge_foam: ShaderMaterial
 var _mat_lighthouse_beam: ShaderMaterial
+var _lightning_timer: float = 16.0
+var _lightning_flash_state: int = 0
+var _lightning_flash_timer: float = 0.0
+var _flock_pivots: Array[Node3D] = []
 
 var _scene_wharf_island: PackedScene
 var _scene_island_large: PackedScene
@@ -116,7 +120,11 @@ func _ready() -> void:
 	_build_wharf_port()
 	_build_fjord_corridor_and_landmarks()
 	_populate_ocean_world()
+	_spawn_rolling_fog_banks()
+	_spawn_landmark_chimney_smoke()
+	_spawn_seabird_flocks()
 	call_deferred("_configure_horizon_fog_darkness")
+	call_deferred("_refresh_sdfgi_cascades")
 
 
 func _exit_tree() -> void:
@@ -303,6 +311,56 @@ func _process(delta: float) -> void:
 				var b_pulse: float = 0.5 + 0.5 * sin(_flicker_time * 1.45 + float(ls_idx) * 2.1)
 				ls_beacon.light_energy = 0.55 + pow(b_pulse, 2.2) * 2.65
 
+	# Swaying dock post lanterns
+	for d_i: int in range(_dock_lanterns.size()):
+		var dl: OmniLight3D = _dock_lanterns[d_i]
+		if dl != null:
+			dl.rotation.z = sin(_flicker_time * 2.2 + float(d_i) * 1.3) * 0.06
+			dl.rotation.x = cos(_flicker_time * 1.8 + float(d_i) * 0.9) * 0.04
+
+	# Circling seabird flock rotation
+	for flock: Node3D in _flock_pivots:
+		if flock != null:
+			flock.rotation.y += delta * 0.35
+
+	# Moonlit horizon sheet lightning system
+	_lightning_timer -= delta
+	var parent_n: Node = get_parent()
+	if parent_n != null:
+		var moon_light: DirectionalLight3D = parent_n.get_node_or_null("DirectionalLight3D") as DirectionalLight3D
+		var world_env_node: WorldEnvironment = parent_n.get_node_or_null("WorldEnvironment") as WorldEnvironment
+		var env_res: Environment = world_env_node.environment if world_env_node != null else null
+
+		if _lightning_timer <= 0.0 and _lightning_flash_state == 0:
+			_lightning_flash_state = 1
+			_lightning_flash_timer = 0.06
+
+		if _lightning_flash_state > 0 and moon_light != null and env_res != null:
+			_lightning_flash_timer -= delta
+			if _lightning_flash_state == 1:
+				moon_light.light_energy = 1.35
+				env_res.volumetric_fog_emission = Color(0.08, 0.12, 0.18, 1.0)
+				env_res.volumetric_fog_emission_energy = 0.45
+				if _lightning_flash_timer <= 0.0:
+					_lightning_flash_state = 2
+					_lightning_flash_timer = 0.04
+			elif _lightning_flash_state == 2:
+				moon_light.light_energy = 0.22
+				env_res.volumetric_fog_emission_energy = 0.06
+				if _lightning_flash_timer <= 0.0:
+					_lightning_flash_state = 3
+					_lightning_flash_timer = 0.12
+			elif _lightning_flash_state == 3:
+				moon_light.light_energy = 1.65
+				env_res.volumetric_fog_emission = Color(0.10, 0.15, 0.24, 1.0)
+				env_res.volumetric_fog_emission_energy = 0.65
+				if _lightning_flash_timer <= 0.0:
+					_lightning_flash_state = 0
+					moon_light.light_energy = 0.14
+					env_res.volumetric_fog_emission = Color(0.001, 0.002, 0.003, 1.0)
+					env_res.volumetric_fog_emission_energy = 0.03
+					_lightning_timer = randf_range(22.0, 38.0)
+
 
 func get_poi_hotspots() -> Array[Dictionary]:
 	return poi_hotspots
@@ -360,17 +418,31 @@ func _init_shared_materials() -> void:
 	_mat_tidal_wet.uv1_triplanar = true
 	_mat_tidal_wet.uv1_scale = Vector3(0.45, 0.45, 0.45)
 
-	# 1: BasaltCliff — High-frequency 5-octave Cellular/Perlin stone bump map (bump_strength = 14.0, roughness = 0.86)
-	_mat_basalt_cliff = StandardMaterial3D.new()
-	_mat_basalt_cliff.resource_name = "BasaltCliff"
-	_mat_basalt_cliff.albedo_color = Color(0.038, 0.045, 0.054, 1.0)
-	_mat_basalt_cliff.roughness = 0.88
-	_mat_basalt_cliff.roughness_texture = stone_rough
-	_mat_basalt_cliff.metallic = 0.08
-	_mat_basalt_cliff.normal_enabled = true
-	_mat_basalt_cliff.normal_texture = stone_normal
-	_mat_basalt_cliff.uv1_triplanar = true
-	_mat_basalt_cliff.uv1_scale = Vector3(0.35, 0.35, 0.35)
+	# 1: BasaltCliff — World-space tidal wetness gradient and high-tide surge wash
+	var wet_cliff_shader: Shader = load("res://shaders/wet_cliff_rock.gdshader") as Shader
+	if wet_cliff_shader != null:
+		var wet_basalt: ShaderMaterial = ShaderMaterial.new()
+		wet_basalt.shader = wet_cliff_shader
+		wet_basalt.set_shader_parameter("albedo_color", Color(0.038, 0.045, 0.054, 1.0))
+		wet_basalt.set_shader_parameter("normal_texture", stone_normal)
+		wet_basalt.set_shader_parameter("use_normal_texture", true)
+		wet_basalt.set_shader_parameter("normal_scale", 1.4)
+		wet_basalt.set_shader_parameter("roughness", 0.88)
+		wet_basalt.set_shader_parameter("tidal_waterline", 1.8)
+		wet_basalt.set_shader_parameter("surge_amplitude", 0.75)
+		_mat_basalt_cliff = wet_basalt
+	else:
+		var std_b: StandardMaterial3D = StandardMaterial3D.new()
+		std_b.resource_name = "BasaltCliff"
+		std_b.albedo_color = Color(0.038, 0.045, 0.054, 1.0)
+		std_b.roughness = 0.88
+		std_b.roughness_texture = stone_rough
+		std_b.metallic = 0.08
+		std_b.normal_enabled = true
+		std_b.normal_texture = stone_normal
+		std_b.uv1_triplanar = true
+		std_b.uv1_scale = Vector3(0.35, 0.35, 0.35)
+		_mat_basalt_cliff = std_b
 
 	# 2: SharpObsidian — Sheer fractured rock faces
 	_mat_sharp_obsidian = StandardMaterial3D.new()
@@ -636,6 +708,7 @@ func _configure_stylized_landmark_hierarchy(
 ) -> void:
 	if node is MeshInstance3D:
 		var mesh_inst: MeshInstance3D = node as MeshInstance3D
+		mesh_inst.gi_mode = GeometryInstance3D.GI_MODE_STATIC
 		mesh_inst.visibility_range_end = vis_range_end
 		mesh_inst.visibility_range_end_margin = vis_margin
 		mesh_inst.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
@@ -662,19 +735,29 @@ func _configure_stylized_landmark_hierarchy(
 						std_mat.emission_energy_multiplier = 3.4
 						std_mat.roughness = 0.15
 					elif std_mat.albedo_texture != null:
-						# Preserve custom Meshy PBR base color & normal textures + multiply `Col` cavity ink
-						# Enforce matte corroded iron / waterlogged timber finish (no glossy clearcoat, high roughness, low specular/metallic)
-						std_mat.vertex_color_use_as_albedo = true
-						std_mat.albedo_color = Color(0.88, 0.86, 0.84, 1.0)
-						std_mat.metallic = minf(std_mat.metallic, 0.10)
-						std_mat.metallic_specular = 0.20
-						std_mat.metallic_texture = null
-						std_mat.roughness = clampf(maxf(std_mat.roughness, 0.88), 0.82, 0.95)
-						std_mat.roughness_texture = null
-						std_mat.clearcoat_enabled = false
-						std_mat.rim_enabled = true
-						std_mat.rim = 0.25
-						std_mat.rim_tint = 0.45
+						# Wet Cliff & Rock PBR shader with tidal surge gradient
+						var wet_shader: Shader = load("res://shaders/wet_cliff_rock.gdshader") as Shader
+						if wet_shader != null:
+							var wet_pbr: ShaderMaterial = ShaderMaterial.new()
+							wet_pbr.shader = wet_shader
+							wet_pbr.set_shader_parameter("albedo_texture", std_mat.albedo_texture)
+							wet_pbr.set_shader_parameter("use_albedo_texture", true)
+							wet_pbr.set_shader_parameter("albedo_color", Color(0.88, 0.86, 0.84, 1.0))
+							if std_mat.normal_texture != null:
+								wet_pbr.set_shader_parameter("normal_texture", std_mat.normal_texture)
+								wet_pbr.set_shader_parameter("use_normal_texture", true)
+								wet_pbr.set_shader_parameter("normal_scale", 1.25)
+							wet_pbr.set_shader_parameter("roughness", clampf(maxf(std_mat.roughness, 0.88), 0.82, 0.95))
+							wet_pbr.set_shader_parameter("tidal_waterline", 1.8)
+							wet_pbr.set_shader_parameter("surge_amplitude", 0.75)
+							mesh_inst.set_surface_override_material(s_idx, wet_pbr)
+							continue
+						else:
+							std_mat.vertex_color_use_as_albedo = true
+							std_mat.albedo_color = Color(0.88, 0.86, 0.84, 1.0)
+							std_mat.metallic = minf(std_mat.metallic, 0.10)
+							std_mat.metallic_specular = 0.20
+							std_mat.roughness = clampf(maxf(std_mat.roughness, 0.88), 0.82, 0.95)
 					else:
 						std_mat.vertex_color_use_as_albedo = true
 						std_mat.metallic = minf(std_mat.metallic, 0.10)
@@ -696,10 +779,11 @@ func _configure_glb_hierarchy(
 	node: Node,
 	vis_range_end: float,
 	vis_margin: float,
-	fallback_materials: Array[StandardMaterial3D]
+	fallback_materials: Array[Material]
 ) -> void:
 	if node is MeshInstance3D:
 		var mesh_inst: MeshInstance3D = node as MeshInstance3D
+		mesh_inst.gi_mode = GeometryInstance3D.GI_MODE_STATIC
 		mesh_inst.visibility_range_end = vis_range_end
 		mesh_inst.visibility_range_end_margin = vis_margin
 		mesh_inst.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
@@ -707,7 +791,7 @@ func _configure_glb_hierarchy(
 		if mesh_inst.mesh != null:
 			var surf_count: int = mesh_inst.mesh.get_surface_count()
 			for s_idx: int in range(surf_count):
-				var assigned_mat: StandardMaterial3D = null
+				var assigned_mat: Material = null
 				var imported_mat: Material = mesh_inst.mesh.surface_get_material(s_idx)
 				if imported_mat != null and _materials_by_name.has(imported_mat.resource_name):
 					assigned_mat = _materials_by_name[imported_mat.resource_name]
@@ -2034,3 +2118,112 @@ func _spawn_formation_instance(
 		foam_inst.visibility_range_end_margin = 60.0
 		foam_inst.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		parent_node.add_child(foam_inst)
+
+
+func _enable_static_gi_on_hierarchy(node: Node) -> void:
+	if node is MeshInstance3D:
+		var mi: MeshInstance3D = node as MeshInstance3D
+		mi.gi_mode = GeometryInstance3D.GI_MODE_STATIC
+	for child: Node in node.get_children():
+		_enable_static_gi_on_hierarchy(child)
+
+
+func _refresh_sdfgi_cascades() -> void:
+	var parent_node: Node = get_parent()
+	if parent_node == null:
+		return
+	var world_env: WorldEnvironment = parent_node.get_node_or_null("WorldEnvironment") as WorldEnvironment
+	if world_env != null and world_env.environment != null:
+		var env: Environment = world_env.environment
+		# Brief toggle to force SDFGI cascade rebuild for newly placed static trimeshes
+		env.sdfgi_enabled = false
+		await get_tree().process_frame
+		env.sdfgi_enabled = true
+
+
+func _spawn_rolling_fog_banks() -> void:
+	var fog_shader: Shader = load("res://shaders/rolling_fog_volume.gdshader") as Shader
+	if fog_shader == null:
+		return
+
+	var fog_banks: Array[Dictionary] = [
+		{"name": "SeaSmoke_FjordMouth", "pos": Vector3(0.0, 6.0, -560.0), "size": Vector3(120.0, 18.0, 160.0), "density": 0.08},
+		{"name": "SeaSmoke_FjordDeepBend", "pos": Vector3(0.0, 6.0, -780.0), "size": Vector3(130.0, 18.0, 180.0), "density": 0.09},
+		{"name": "SeaSmoke_HamletBasin", "pos": Vector3(0.0, 8.0, -960.0), "size": Vector3(220.0, 24.0, 220.0), "density": 0.11},
+		{"name": "SeaSmoke_StiltSanctuary", "pos": Vector3(380.0, 6.0, -180.0), "size": Vector3(160.0, 18.0, 160.0), "density": 0.085},
+		{"name": "SeaSmoke_Caldera", "pos": Vector3(-620.0, 7.0, -180.0), "size": Vector3(260.0, 22.0, 260.0), "density": 0.10},
+		{"name": "SeaSmoke_Shipwreck00", "pos": Vector3(-260.0, 5.0, -210.0), "size": Vector3(90.0, 14.0, 90.0), "density": 0.075},
+		{"name": "SeaSmoke_BoneSkerry", "pos": Vector3(-420.0, 5.0, 140.0), "size": Vector3(110.0, 16.0, 110.0), "density": 0.08},
+		{"name": "SeaSmoke_Lightship", "pos": Vector3(140.0, 5.0, 310.0), "size": Vector3(100.0, 15.0, 100.0), "density": 0.075},
+	]
+
+	var fog_parent: Node3D = Node3D.new()
+	fog_parent.name = "SeaSmokeFogBanks"
+	add_child(fog_parent)
+
+	for b: Dictionary in fog_banks:
+		var fv: FogVolume = FogVolume.new()
+		fv.name = String(b["name"])
+		fv.position = b["pos"] as Vector3
+		fv.size = b["size"] as Vector3
+		fv.shape = RenderingServer.FOG_VOLUME_SHAPE_BOX
+		var fv_mat: ShaderMaterial = ShaderMaterial.new()
+		fv_mat.shader = fog_shader
+		fv_mat.set_shader_parameter("base_density", float(b["density"]))
+		fv.material = fv_mat
+		fog_parent.add_child(fv)
+
+
+func _spawn_landmark_chimney_smoke() -> void:
+	var smoke_parent: Node3D = Node3D.new()
+	smoke_parent.name = "ChimneySmokeEmitters"
+	add_child(smoke_parent)
+
+	var chimney_spots: Array[Vector3] = [
+		Vector3(-6.0, 16.5, -955.0),   # Terraced Hamlet Cottage Tier 1
+		Vector3(12.0, 24.5, -968.0),   # Terraced Hamlet Cottage Tier 2
+		Vector3(18.0, 11.5, -948.0),   # Terraced Hamlet Waterfront Pier Workshop
+		Vector3(-68.0, 16.5, -626.0),  # Port Cliff Watch-Shack
+		Vector3(68.0, 16.5, -812.0),   # Starboard Cliff Watch-Shack
+		Vector3(-14.0, 7.5, 28.0),     # Harbor Wharf Pier Shack
+	]
+
+	for i: int in range(chimney_spots.size()):
+		var emitter: GPUParticles3D = _create_chimney_smoke_emitter("ChimneySmoke_%d" % i, chimney_spots[i])
+		smoke_parent.add_child(emitter)
+
+
+func _spawn_seabird_flocks() -> void:
+	var flock_centers: Array[Vector3] = [
+		Vector3(0.0, 32.0, 44.0),     # Harbor Lighthouse peak
+		Vector3(0.0, 42.0, -960.0),    # Terraced Hamlet northern spires
+		Vector3(-420.0, 24.0, 140.0),  # Bone Skerry
+	]
+
+	var flock_root: Node3D = Node3D.new()
+	flock_root.name = "SeabirdFlocks"
+	add_child(flock_root)
+
+	var bird_mesh: PrismMesh = PrismMesh.new()
+	bird_mesh.size = Vector3(1.2, 0.18, 0.85)
+	var bird_mat: StandardMaterial3D = StandardMaterial3D.new()
+	bird_mat.albedo_color = Color(0.12, 0.14, 0.16, 1.0)
+	bird_mat.roughness = 0.9
+	bird_mesh.material = bird_mat
+
+	for c_pos: Vector3 in flock_centers:
+		var pivot: Node3D = Node3D.new()
+		pivot.position = c_pos
+		flock_root.add_child(pivot)
+		_flock_pivots.append(pivot)
+
+		for b_i: int in range(6):
+			var angle: float = float(b_i) * (TAU / 6.0) + randf_range(-0.25, 0.25)
+			var radius: float = randf_range(16.0, 32.0)
+			var bird: MeshInstance3D = MeshInstance3D.new()
+			bird.mesh = bird_mesh
+			bird.position = Vector3(cos(angle) * radius, randf_range(-2.5, 3.5), sin(angle) * radius)
+			bird.rotation.y = angle + PI * 0.5
+			bird.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			bird.visibility_range_end = 950.0
+			pivot.add_child(bird)

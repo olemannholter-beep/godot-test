@@ -32,6 +32,12 @@ extends CharacterBody3D
 @export var boat_hull_half_size: Vector3 = Vector3(1.82, 2.2, 5.15)
 @export var debug_show_wave_probes: bool = false
 
+@export_group("Searchlight Rig")
+@export var searchlight_height: float = 3.5
+@export var searchlight_pitch_deg: float = -11.0
+@export var searchlight_energy: float = 18.0
+@export var deck_lights_energy_multiplier: float = 0.28
+
 static var shared_wave_speed: float = 1.25
 static var shared_wave_height: float = 0.75
 
@@ -101,12 +107,17 @@ var _ram_impact_player: AudioStreamPlayer3D = null
 var _searchlight_toggle_player: AudioStreamPlayer3D = null
 var _lamp_lens_override_mat: StandardMaterial3D = null
 var _threat_director: RoamingThreatDirector = null
+var _atmosphere_layer: CanvasLayer = null
+var _atmosphere_rect: ColorRect = null
+var _atmosphere_mat: ShaderMaterial = null
 
 
 func _ready() -> void:
 	_stern_lantern_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	_stern_lantern_noise.seed = 1928
 	_stern_lantern_noise.frequency = 0.95
+
+	_setup_screen_atmosphere_overlay()
 
 	if visuals != null:
 		_base_visuals_y = visuals.position.y
@@ -249,74 +260,74 @@ func set_debug_wave_probes_visible(enabled: bool) -> void:
 
 
 func _configure_boat_volumetric_lights() -> void:
+	base_searchlight_energy = searchlight_energy
+	if searchlight_gimbal != null:
+		searchlight_gimbal.position = Vector3(0.0, searchlight_height, -2.2)
+
 	if bow_searchlight != null:
 		bow_searchlight.position = Vector3(0.0, 0.08, -0.18)
 		bow_searchlight.rotation_degrees = Vector3(-4.5, 0.0, 0.0)
 		bow_searchlight.light_color = Color(1.0, 0.86, 0.62, 1.0)
-		bow_searchlight.light_energy = 26.0
-		bow_searchlight.spot_range = 95.0
+		bow_searchlight.light_energy = base_searchlight_energy
+		bow_searchlight.spot_range = 110.0
 		bow_searchlight.spot_attenuation = 0.72
 		bow_searchlight.spot_angle = 32.0
 		bow_searchlight.spot_angle_attenuation = 1.35
-		bow_searchlight.light_specular = 2.8
+		bow_searchlight.light_specular = 1.0
 		bow_searchlight.shadow_enabled = true
 		bow_searchlight.shadow_blur = 1.5
 		bow_searchlight.light_volumetric_fog_energy = 2.4
 	if bow_flood_spill != null:
 		bow_flood_spill.rotation_degrees = Vector3(-6.0, 0.0, 0.0)
 		bow_flood_spill.light_color = Color(0.98, 0.88, 0.68, 1.0)
-		bow_flood_spill.light_energy = 4.5
-		bow_flood_spill.spot_range = 85.0
+		bow_flood_spill.light_energy = 1.2 * deck_lights_energy_multiplier
+		bow_flood_spill.spot_range = 45.0
 		bow_flood_spill.spot_attenuation = 1.2
-		bow_flood_spill.spot_angle = 48.0
+		bow_flood_spill.spot_angle = 44.0
 		bow_flood_spill.spot_angle_attenuation = 2.8
 		bow_flood_spill.light_volumetric_fog_energy = 0.05
 	if water_surface_illuminator != null:
-		water_surface_illuminator.position = Vector3(0.0, 2.2, -12.5)
-		water_surface_illuminator.rotation_degrees = Vector3(-7.5, 0.0, 0.0)
-		water_surface_illuminator.light_color = Color(0.98, 0.88, 0.68, 1.0)
-		water_surface_illuminator.light_volumetric_fog_energy = 0.0
-		water_surface_illuminator.light_energy = 34.0
-		water_surface_illuminator.spot_range = 150.0
-		water_surface_illuminator.spot_attenuation = 0.65
-		water_surface_illuminator.spot_angle = 36.0
-		water_surface_illuminator.spot_angle_attenuation = 2.4
+		water_surface_illuminator.visible = false
+		water_surface_illuminator.light_energy = 0.0
+		base_water_path_energy = 0.0
 	if cabin_lantern != null:
 		cabin_lantern.light_color = Color(1.0, 0.68, 0.32, 1.0)
-		cabin_lantern.light_energy = 3.5
-		cabin_lantern.omni_range = 15.0
-		cabin_lantern.omni_attenuation = 0.85
+		cabin_lantern.light_energy = 3.5 * deck_lights_energy_multiplier
+		cabin_lantern.omni_range = 4.8
+		cabin_lantern.omni_attenuation = 1.2
 		cabin_lantern.shadow_enabled = true
-		cabin_lantern.light_volumetric_fog_energy = 0.9
+		cabin_lantern.light_volumetric_fog_energy = 0.15
+		base_cabin_lantern_energy = cabin_lantern.light_energy
 		_base_cabin_lantern_energy = cabin_lantern.light_energy
 	if wheelhouse_interior_light != null:
 		wheelhouse_interior_light.light_color = Color(0.95, 0.62, 0.28, 1.0)
-		wheelhouse_interior_light.light_energy = 1.6
-		wheelhouse_interior_light.omni_range = 4.0
-		wheelhouse_interior_light.light_volumetric_fog_energy = 0.15
+		wheelhouse_interior_light.light_energy = 1.6 * deck_lights_energy_multiplier
+		wheelhouse_interior_light.omni_range = 3.8
+		wheelhouse_interior_light.light_volumetric_fog_energy = 0.08
 	if boat_rim_fill_light != null:
 		boat_rim_fill_light.light_color = Color(0.28, 0.42, 0.52, 1.0)
-		boat_rim_fill_light.light_energy = 0.55
-		boat_rim_fill_light.omni_range = 14.0
+		boat_rim_fill_light.light_energy = 0.55 * deck_lights_energy_multiplier
+		boat_rim_fill_light.omni_range = 5.0
 		boat_rim_fill_light.light_volumetric_fog_energy = 0.0
 	if visuals != null:
 		var cabin_spill: OmniLight3D = visuals.get_node_or_null("CabinWarmSpillLight") as OmniLight3D
 		if cabin_spill != null:
 			cabin_spill.light_color = Color(1.0, 0.62, 0.25, 1.0)
-			cabin_spill.light_energy = 2.8
-			cabin_spill.omni_range = 6.5
-			cabin_spill.light_volumetric_fog_energy = 0.8
+			cabin_spill.light_energy = 2.8 * deck_lights_energy_multiplier
+			cabin_spill.omni_range = 4.5
+			cabin_spill.light_volumetric_fog_energy = 0.15
 			cabin_spill.shadow_enabled = true
 		var mast_light: OmniLight3D = visuals.get_node_or_null("MastheadLight") as OmniLight3D
 		if mast_light != null:
 			mast_light.light_color = Color(1.0, 0.72, 0.35, 1.0)
-			mast_light.light_energy = 3.2
-			mast_light.omni_range = 14.0
-			mast_light.omni_attenuation = 0.85
-			mast_light.light_volumetric_fog_energy = 1.4
+			mast_light.light_energy = 3.2 * deck_lights_energy_multiplier
+			mast_light.omni_range = 5.0
+			mast_light.omni_attenuation = 1.2
+			mast_light.light_volumetric_fog_energy = 0.15
 		var winch_light: Light3D = visuals.get_node_or_null("WinchWorkLight") as Light3D
 		if winch_light != null:
-			winch_light.light_volumetric_fog_energy = 0.35
+			winch_light.light_energy = 1.0 * deck_lights_energy_multiplier
+			winch_light.light_volumetric_fog_energy = 0.15
 
 		var aft_area_light: Light3D = visuals.get_node_or_null("AftDeckAreaWorkLight") as Light3D
 		if aft_area_light == null:
@@ -327,11 +338,11 @@ func _configure_boat_volumetric_lights() -> void:
 				Vector3(-22.0, 0.0, 0.0),
 				Vector2(1.6, 0.8),
 				Color(1.0, 0.72, 0.38, 1.0),
-				1.4,
-				7.5,
+				1.4 * deck_lights_energy_multiplier,
+				5.0,
 				false,
 				1.0,
-				0.25,
+				0.15,
 				80.0
 			)
 
@@ -575,9 +586,29 @@ func _configure_trawler_materials(root_node: Node) -> void:
 				mesh_inst.set_surface_override_material(surf_idx, matte_mat)
 
 
+func _setup_screen_atmosphere_overlay() -> void:
+	_atmosphere_layer = CanvasLayer.new()
+	_atmosphere_layer.name = "ScreenAtmosphereLayer"
+	_atmosphere_layer.layer = 1
+	add_child(_atmosphere_layer)
+
+	_atmosphere_rect = ColorRect.new()
+	_atmosphere_rect.name = "AtmosphereColorRect"
+	_atmosphere_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_atmosphere_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var shader: Shader = load("res://shaders/screen_atmosphere_overlay.gdshader") as Shader
+	if shader != null:
+		_atmosphere_mat = ShaderMaterial.new()
+		_atmosphere_mat.shader = shader
+		_atmosphere_rect.material = _atmosphere_mat
+	_atmosphere_layer.add_child(_atmosphere_rect)
+
+
 func _exit_tree() -> void:
 	_beam_shader_material = null
 	_lamp_lens_override_mat = null
+	_atmosphere_mat = null
 	_creak_stream = null
 	if _diesel_player != null:
 		_diesel_player.stop()
@@ -948,8 +979,8 @@ func _update_searchlight(delta: float) -> void:
 	# Strictly static yaw locked dead-ahead along the bow (-Z)
 	searchlight_gimbal.rotation.y = 0.0
 
-	# Dynamic vertical horizon stabilization at -11.0 deg counteracting 70% of hull wave pitch
-	var target_pitch: float = deg_to_rad(-11.0) - (_hull_pitch * 0.70)
+	# Dynamic vertical horizon stabilization counteracting 70% of hull wave pitch
+	var target_pitch: float = deg_to_rad(searchlight_pitch_deg) - (_hull_pitch * 0.70)
 	var weight: float = clampf(visual_smoothing * delta, 0.0, 1.0)
 	searchlight_gimbal.rotation.x = lerpf(searchlight_gimbal.rotation.x, target_pitch, weight)
 
@@ -965,13 +996,12 @@ func _update_searchlight(delta: float) -> void:
 		bow_searchlight.visible = _searchlight_dimmer_blend > 0.005
 
 	if bow_flood_spill != null:
-		bow_flood_spill.light_energy = 8.0 * surge_factor * _searchlight_dimmer_blend
+		bow_flood_spill.light_energy = 1.2 * surge_factor * _searchlight_dimmer_blend * deck_lights_energy_multiplier
 		bow_flood_spill.visible = _searchlight_dimmer_blend > 0.005
 
 	if water_surface_illuminator != null:
-		var water_ripple: float = (1.0 + alternator_ripple * 0.3) if base_water_path_energy > 0.001 else 0.0
-		water_surface_illuminator.light_energy = base_water_path_energy * water_ripple * _searchlight_dimmer_blend
-		water_surface_illuminator.visible = _searchlight_dimmer_blend > 0.005
+		water_surface_illuminator.light_energy = 0.0
+		water_surface_illuminator.visible = false
 
 	if cabin_lantern != null:
 		# Smooth 1D FastNoiseLite generator flicker (+-7% energy wobble) on the stern oil lantern
@@ -988,6 +1018,14 @@ func _update_searchlight(delta: float) -> void:
 
 	if _lamp_lens_override_mat != null:
 		_lamp_lens_override_mat.emission_energy_multiplier = 8.0 * _searchlight_dimmer_blend
+
+	if _atmosphere_mat != null:
+		var cam: Camera3D = get_viewport().get_camera_3d()
+		var cam_yaw: float = cam.global_rotation.y if cam != null else rotation.y
+		var cam_pitch: float = cam.global_rotation.x if cam != null else 0.0
+		_atmosphere_mat.set_shader_parameter("camera_yaw", cam_yaw)
+		_atmosphere_mat.set_shader_parameter("camera_pitch", cam_pitch)
+		_atmosphere_mat.set_shader_parameter("boat_speed", absf(current_speed))
 
 
 func _unhandled_input(event: InputEvent) -> void:

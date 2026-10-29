@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
+render_mode blend_mix, depth_draw_never, cull_back, diffuse_burley, specular_schlick_ggx;
 
 uniform vec4 deep_color : source_color = vec4(0.04, 0.11, 0.15, 1.0);
 uniform vec4 shallow_color : source_color = vec4(0.11, 0.26, 0.24, 1.0);
@@ -21,10 +21,14 @@ uniform float foam_scale : hint_range(0.01, 0.5) = 0.08;
 uniform float roughness : hint_range(0.0, 1.0) = 0.22;
 uniform float metallic : hint_range(0.0, 1.0) = 0.18;
 uniform float specular : hint_range(0.0, 1.0) = 0.92;
+uniform float shoreline_foam_depth : hint_range(0.5, 8.0) = 3.2;
+uniform float ssr_reflection_strength : hint_range(0.0, 1.0) = 0.65;
 
 uniform sampler2D normal_map_a : hint_normal, repeat_enable;
 uniform sampler2D normal_map_b : hint_normal, repeat_enable;
 uniform sampler2D foam_noise : repeat_enable;
+uniform sampler2D depth_texture : hint_depth_texture, filter_linear_mipmap;
+uniform sampler2D screen_texture : hint_screen_texture, filter_linear_mipmap;
 
 uniform mat4 boat_inv_xform = mat4(1.0);
 uniform vec3 boat_hull_half_size = vec3(1.85, 2.2, 5.2);
@@ -266,9 +270,9 @@ void fragment() {
 	float froth_fbm_b = fbm_4(foam_uv_2);
 	float lacy_froth = smoothstep(0.28, 0.76, mix(froth_fbm_a, froth_fbm_b, 0.5));
 
-	// Breaking Crest Foam: high wave height + steep surface slope
-	float steep_crest_driver = smoothstep(0.58, 0.92, crest_factor + geom_slope * 1.20);
-	float whitecap_mask = smoothstep(0.38, 0.72, steep_crest_driver * (0.45 + 0.85 * lacy_froth));
+	// Breaking Crest Foam: only the sharpest tipping crests
+	float steep_crest_driver = smoothstep(0.84, 0.98, crest_factor * 0.75 + geom_slope * 0.45);
+	float whitecap_mask = smoothstep(0.62, 0.90, steep_crest_driver * lacy_froth);
 
 	// Wind-Driven Foam Streaks (Langmuir Lanes): anisotropic FBM stretched along wind vector
 	vec2 langmuir_uv = vec2(v_world_pos.x * 0.08 + t * 0.3, v_world_pos.z * 0.45);
@@ -277,22 +281,52 @@ void fragment() {
 		value_noise(world_xz * 0.06 - vec2(0.0, t * 0.04))
 	) * 0.65;
 	float langmuir_fbm = fbm_4(langmuir_uv + warp_offset);
-	float bubble_veins = smoothstep(0.60, 0.80, langmuir_fbm) * (0.45 + 0.55 * lacy_froth);
+	float bubble_veins = smoothstep(0.70, 0.88, langmuir_fbm) * (0.35 + 0.65 * lacy_froth);
 	// Modulate streaks across wave slopes and troughs
-	float streak_mask = bubble_veins * mix(0.32, 0.78, trough_to_crest);
+	float streak_mask = bubble_veins * smoothstep(0.70, 0.95, trough_to_crest) * 0.35;
 
-	float total_foam_mask = clamp(whitecap_mask + streak_mask * 0.50, 0.0, 1.0);
-	vec3 whitecap_foam_rgb = vec3(0.78, 0.84, 0.86);
+	// Shoreline Contact Foam via Depth Buffer
+	float raw_depth = texture(depth_texture, SCREEN_UV).r;
+	float shore_foam_mask = 0.0;
+	// In Godot 4 Reverse-Z, background/sky has raw_depth <= 0.0001
+	if (raw_depth > 0.0001) {
+		vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, raw_depth);
+		vec4 view_pos = INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
+		view_pos.xyz /= view_pos.w;
+		float depth_diff = -view_pos.z - (-VERTEX.z);
+		if (depth_diff > 0.02 && depth_diff < shoreline_foam_depth) {
+			float shore_contact = clamp(1.0 - (depth_diff / shoreline_foam_depth), 0.0, 1.0);
+			float shore_noise = fbm_4(world_xz * 0.18 + vec2(t * 0.08, -t * 0.05));
+			shore_foam_mask = smoothstep(0.18, 0.82, shore_contact * (0.55 + 0.65 * shore_noise));
+		}
+	}
+
+	float total_foam_mask = clamp(whitecap_mask * 0.65 + streak_mask * 0.25 + shore_foam_mask * 0.80, 0.0, 1.0);
+	vec3 whitecap_foam_rgb = vec3(0.28, 0.38, 0.42);
 
 	// =========================================================================
-	// 4. VARIABLE WIND-SLICK ROUGHNESS (ZERO SELF-EMISSION IN DARKNESS)
+	// 4. VARIABLE WIND-SLICK ROUGHNESS & SCREEN-SPACE PLANAR REFLECTIONS
 	// =========================================================================
 	// Wind-scoured patches vs mirror-like wind slicks in the troughs (0.14 to 0.42)
 	float wind_scour = smoothstep(0.30, 0.75, meso_turbidity * 0.65 + cap_deriv_1.x * 0.35);
 	float surface_roughness_factor = clamp(trough_to_crest * 0.65 + wind_scour * 0.35 + total_foam_mask * 0.55, 0.0, 1.0);
 	float dynamic_roughness = mix(0.14, 0.42, surface_roughness_factor);
 
-	ALBEDO = max(base_water, vec3(0.0));
+	// Screen-Space Planar Reflection with Wave Normal Perturbation
+	vec2 ref_uv_offset = combined_xy * 0.045 / max(-VERTEX.z * 0.08, 1.0);
+	vec2 ref_uv = clamp(SCREEN_UV + ref_uv_offset, vec2(0.002), vec2(0.998));
+	vec3 reflected_scene = texture(screen_texture, ref_uv).rgb;
+
+	// Schlick-Fresnel approximation
+	float ndotv = max(dot(NORMAL, VIEW), 0.0001);
+	float f0 = 0.028;
+	float water_fresnel = f0 + (1.0 - f0) * pow(clamp(1.0 - ndotv, 0.0, 1.0), 5.0);
+
+	// Blend reflected scene over base water
+	vec3 water_with_refl = mix(base_water, reflected_scene, water_fresnel * ssr_reflection_strength * (1.0 - dynamic_roughness * 0.5));
+	vec3 final_albedo = mix(water_with_refl, whitecap_foam_rgb, total_foam_mask * 0.55);
+
+	ALBEDO = max(final_albedo, vec3(0.0));
 	EMISSION = vec3(0.0);
 	ROUGHNESS = dynamic_roughness;
 	METALLIC = mix(metallic, 0.04, total_foam_mask);
@@ -324,11 +358,11 @@ void light() {
 
 		// Wave crest foam brightening and teal subsurface scatter strictly inside light()
 		float t_light = (ocean_time > 0.0) ? ocean_time : ((wave_time > 0.0) ? wave_time : TIME);
-		float crest_mask = smoothstep(-0.08, wave_height * 0.88, v_wave_height);
+		float crest_mask = smoothstep(wave_height * 0.45, wave_height * 0.95, v_wave_height);
 		float froth_a = fbm_4(v_world_pos.xz * (foam_scale * 1.8) + vec2(t_light * 0.04, -t_light * 0.03));
-		float lit_foam = clamp(crest_mask * smoothstep(0.28, 0.72, froth_a), 0.0, 1.0);
-		vec3 lit_crest_contrib = (sss_scatter_color * crest_mask * 0.42 + foam_color.rgb * lit_foam * 0.58);
-		DIFFUSE_LIGHT += lit_crest_contrib * LIGHT_COLOR * ATTENUATION * light_reach;
+		float lit_foam = clamp(crest_mask * smoothstep(0.45, 0.85, froth_a), 0.0, 1.0);
+		vec3 lit_crest_contrib = (sss_scatter_color * crest_mask * 0.18 + foam_color.rgb * lit_foam * 0.22);
+		DIFFUSE_LIGHT += lit_crest_contrib * LIGHT_COLOR * ATTENUATION * light_reach * 0.45;
 
 		// =====================================================================
 		// 6. WIDE SOFT SPECULAR SHEEN ON WAVE SLOPES FACING THE LIGHT
@@ -340,9 +374,9 @@ void light() {
 		// For a boat-mounted spotlight viewed from an overhead chase camera, VIEW and LIGHT both point back toward the boat,
 		// so half_vec is tilted toward the boat; use a broad exponent (4.2 and 14.0) + wave slope facing the light so distant swells shimmer
 		float wave_slope_toward_light = clamp(n_dot_l * 2.2 + 0.20, 0.0, 1.25);
-		float wide_sheen = pow(ndoth, 4.2) * 0.16 + pow(ndoth, 14.0) * 0.42 + pow(ndoth, 38.0) * 0.60;
-		float grazing_boost = 1.0 + 0.85 * pow(max(1.0 - ndotv, 0.0001), 1.8);
-		vec3 spec_contrib = (wide_sheen * grazing_boost * wave_slope_toward_light) * LIGHT_COLOR * ATTENUATION;
-		SPECULAR_LIGHT += max(spec_contrib, vec3(0.0));
+		float wide_sheen = pow(ndoth, 4.2) * 0.08 + pow(ndoth, 14.0) * 0.22 + pow(ndoth, 38.0) * 0.40;
+		float grazing_boost = 1.0 + 0.65 * pow(max(1.0 - ndotv, 0.0001), 1.8);
+		vec3 spec_contrib = (wide_sheen * grazing_boost * wave_slope_toward_light * 0.18) * LIGHT_COLOR * ATTENUATION;
+		SPECULAR_LIGHT += clamp(spec_contrib, vec3(0.0), vec3(2.5));
 	}
 }

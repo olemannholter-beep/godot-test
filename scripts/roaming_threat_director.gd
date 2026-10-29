@@ -362,7 +362,7 @@ func _create_leviathan_instance(spawn_pos: Vector3, phase_seed: float) -> Dictio
 	bio_light.light_volumetric_fog_energy = 1.2 * enemy_glow_intensity
 	head_pivot.add_child(bio_light)
 
-	LightingUtils.create_area_or_omni_light(
+	var spine_light: Light3D = LightingUtils.create_area_or_omni_light(
 		head_pivot,
 		"LeviathanSpineAreaLight",
 		Vector3(0.0, 1.8, 4.5),
@@ -412,6 +412,7 @@ func _create_leviathan_instance(spawn_pos: Vector3, phase_seed: float) -> Dictio
 		"coil_pivots": coil_pivots,
 		"history_points": history_points,
 		"bio_light": bio_light,
+		"spine_light": spine_light,
 		"coil_light": coil_light,
 		"rumble_player": rumble_player,
 		"eye_mats": eye_mats,
@@ -1129,6 +1130,9 @@ func _update_leviathan(lev: Dictionary, delta: float) -> void:
 		var pulse: float = 0.85 + 0.25 * sin(_time_sec * 3.2 + phase_seed)
 		bio_light.light_energy = 5.4 * pulse * enemy_glow_intensity
 		coil_light.light_energy = 3.6 * pulse * enemy_glow_intensity
+		var spine_light: Light3D = lev.get("spine_light") as Light3D
+		if spine_light != null:
+			spine_light.light_energy = 4.8 * pulse * enemy_glow_intensity
 
 	lev["state"] = state
 	lev["state_timer"] = state_timer
